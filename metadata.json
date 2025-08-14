@@ -1,0 +1,7 @@
+
+{
+  "name": "Billetto Dashboard",
+  "description": "An interactive dashboard to view and analyze your Billetto event statistics. See revenue, ticket sales, attendee lists, and more for all your events.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}

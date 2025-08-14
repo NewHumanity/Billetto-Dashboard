@@ -1,0 +1,26 @@
+{
+  "short_name": "Billetto Stats",
+  "name": "Billetto Statistics Viewer",
+  "description": "A dashboard to visualize your Billetto event statistics, including revenue, tickets sold, and event performance.",
+  "icons": [
+    {
+      "src": "https://www.billetto.se/images/icons/apple-touch-icon-144x144.png",
+      "type": "image/png",
+      "sizes": "144x144"
+    },
+    {
+      "src": "https://www.billetto.se/images/icons/apple-touch-icon-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://www.billetto.se/images/icons/apple-touch-icon-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1E293B",
+  "background_color": "#0F172A"
+}
