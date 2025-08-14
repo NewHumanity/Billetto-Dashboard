@@ -1,8 +1,8 @@
 import { openDB, IDBPDatabase } from 'idb';
-import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails } from '../types';
+import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee } from '../types';
 
 const DB_NAME = 'billetto-dashboard-cache';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Bump version for schema change
 
 const STORES = {
     KEYVAL: 'keyval',
@@ -11,6 +11,11 @@ const STORES = {
     ORDERS: 'orders',
     ORDER_DETAILS: 'orderDetails',
     LEDGER: 'ledger',
+    CAMPAIGNS: 'campaigns',
+    TARGET_GROUPS: 'targetGroups',
+    TARGET_GROUP_MEMBERS: 'targetGroupMembers',
+    ATTENDEES: 'attendees',
+    ATTENDEE_DETAILS: 'attendeeDetails',
 };
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -20,7 +25,7 @@ const initDB = () => {
         return dbPromise;
     }
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-        upgrade(db) {
+        upgrade(db, oldVersion) {
             if (!db.objectStoreNames.contains(STORES.KEYVAL)) {
                 db.createObjectStore(STORES.KEYVAL);
             }
@@ -38,6 +43,24 @@ const initDB = () => {
             }
             if (!db.objectStoreNames.contains(STORES.LEDGER)) {
                 db.createObjectStore(STORES.LEDGER);
+            }
+            if (!db.objectStoreNames.contains(STORES.CAMPAIGNS)) {
+                db.createObjectStore(STORES.CAMPAIGNS);
+            }
+            if (!db.objectStoreNames.contains(STORES.TARGET_GROUPS)) {
+                db.createObjectStore(STORES.TARGET_GROUPS);
+            }
+            if (!db.objectStoreNames.contains(STORES.TARGET_GROUP_MEMBERS)) {
+                db.createObjectStore(STORES.TARGET_GROUP_MEMBERS);
+            }
+            // Added in v3
+            if (oldVersion < 3) {
+                 if (!db.objectStoreNames.contains(STORES.ATTENDEES)) {
+                    db.createObjectStore(STORES.ATTENDEES);
+                }
+                if (!db.objectStoreNames.contains(STORES.ATTENDEE_DETAILS)) {
+                    db.createObjectStore(STORES.ATTENDEE_DETAILS, { keyPath: 'id' });
+                }
             }
         },
     });
@@ -113,6 +136,68 @@ export const setLedgerCache = async (page: number, ledgerData: ListResponse<Ledg
     const db = await initDB();
     await db.put(STORES.LEDGER, ledgerData, `page-${page}`);
     await setInKeyval('ledger_last_updated', new Date());
+};
+
+// --- Campaigns ---
+export const getCampaignsCache = async (page: number): Promise<{ campaignsData?: ListResponse<Campaign>, lastUpdated?: Date }> => {
+    const db = await initDB();
+    return {
+        campaignsData: await db.get(STORES.CAMPAIGNS, `page-${page}`),
+        lastUpdated: await getFromKeyval('campaigns_last_updated')
+    };
+};
+export const setCampaignsCache = async (page: number, campaignsData: ListResponse<Campaign>) => {
+    const db = await initDB();
+    await db.put(STORES.CAMPAIGNS, campaignsData, `page-${page}`);
+    await setInKeyval('campaigns_last_updated', new Date());
+};
+
+// --- Target Groups ---
+export const getTargetGroupsCache = async (page: number): Promise<{ groupsData?: ListResponse<TargetGroup>, lastUpdated?: Date }> => {
+    const db = await initDB();
+    return {
+        groupsData: await db.get(STORES.TARGET_GROUPS, `page-${page}`),
+        lastUpdated: await getFromKeyval('target_groups_last_updated')
+    };
+};
+export const setTargetGroupsCache = async (page: number, groupsData: ListResponse<TargetGroup>) => {
+    const db = await initDB();
+    await db.put(STORES.TARGET_GROUPS, groupsData, `page-${page}`);
+    await setInKeyval('target_groups_last_updated', new Date());
+};
+
+// --- Target Group Members ---
+export const getTargetGroupMembersCache = async (groupId: string, page: number): Promise<ListResponse<TargetGroupMember> | undefined> => {
+    const db = await initDB();
+    return db.get(STORES.TARGET_GROUP_MEMBERS, `${groupId}-page-${page}`);
+};
+export const setTargetGroupMembersCache = async (groupId: string, page: number, membersData: ListResponse<TargetGroupMember>) => {
+    const db = await initDB();
+    return db.put(STORES.TARGET_GROUP_MEMBERS, membersData, `${groupId}-page-${page}`);
+};
+
+// --- All Attendees ---
+export const getAttendeesCache = async (page: number): Promise<{ attendeesData?: ListResponse<Attendee>, lastUpdated?: Date }> => {
+    const db = await initDB();
+    return {
+        attendeesData: await db.get(STORES.ATTENDEES, `page-${page}`),
+        lastUpdated: await getFromKeyval('attendees_last_updated')
+    };
+};
+export const setAttendeesCache = async (page: number, attendeesData: ListResponse<Attendee>) => {
+    const db = await initDB();
+    await db.put(STORES.ATTENDEES, attendeesData, `page-${page}`);
+    await setInKeyval('attendees_last_updated', new Date());
+};
+
+// --- Attendee Details ---
+export const getAttendeeDetailsCache = async (attendeeId: string): Promise<Attendee | undefined> => {
+    const db = await initDB();
+    return db.get(STORES.ATTENDEE_DETAILS, attendeeId);
+};
+export const setAttendeeDetailsCache = async (details: Attendee) => {
+    const db = await initDB();
+    return db.put(STORES.ATTENDEE_DETAILS, details);
 };
 
 // --- Clear all data ---

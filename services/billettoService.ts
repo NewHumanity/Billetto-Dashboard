@@ -1,6 +1,6 @@
 
 
-import { BillettoEvent, ListResponse, Attendee, Order, LedgerEntry } from '../types';
+import { BillettoEvent, ListResponse, Attendee, Order, LedgerEntry, Campaign, TicketGroup, TargetGroup, TargetGroupMember } from '../types';
 
 // Using corsproxy.io as it seems more robust for this API.
 const CORS_PROXY_URL = 'https://corsproxy.io/?';
@@ -141,12 +141,39 @@ export class BillettoApiClient {
     }
     throw new BillettoApiError('Invalid event data structure for single event', BillettoErrorType.VALIDATION, undefined, eventData);
   }
+  
+  async getAttendees(page = 1, perPage = 25, expand: string[] = []): Promise<ListResponse<Attendee>> {
+    const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
+    const targetUrl = `${this.billettoApiBase}/attendees?page=${page}&per_page=${perPage}${expandQuery}&sort=-created_at`;
+    const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
+    const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
+    return this.parseListResponse<Attendee>(response);
+  }
+
+  async getAttendee(attendeeId: string, expand: string[] = []): Promise<Attendee> {
+    const expandQuery = expand.length > 0 ? `?expand=${expand.join(',')}` : '';
+    const targetUrl = `${this.billettoApiBase}/attendees/${attendeeId}${expandQuery}`;
+    const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
+    const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
+    const attendeeData = await response.json();
+    if (attendeeData && attendeeData.object === 'attendee' && typeof attendeeData.id === 'string') {
+        return attendeeData as Attendee;
+    }
+    throw new BillettoApiError('Invalid attendee data structure', BillettoErrorType.VALIDATION, undefined, attendeeData);
+  }
 
   async getEventAttendees(eventId: string, page = 1, perPage = 100): Promise<ListResponse<Attendee>> {
     const targetUrl = `${this.billettoApiBase}/events/${eventId}/attendees?page=${page}&per_page=${perPage}`;
     const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
     const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
     return this.parseListResponse<Attendee>(response);
+  }
+  
+  async getEventTicketGroups(eventId: string, page = 1, perPage = 100): Promise<ListResponse<TicketGroup>> {
+    const targetUrl = `${this.billettoApiBase}/ticket_groups?event_id=${eventId}&page=${page}&per_page=${perPage}`;
+    const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
+    const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
+    return this.parseListResponse<TicketGroup>(response);
   }
 
   async getOrders(page = 1, perPage = 25, expand: string[] = []): Promise<ListResponse<Order>> {
@@ -172,6 +199,42 @@ export class BillettoApiClient {
   async getLedgerEntries(page = 1, perPage = 25, expand: string[] = []): Promise<ListResponse<LedgerEntry>> {
     const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
     const targetUrl = `${this.billettoApiBase}/ledger_entries?page=${page}&per_page=${perPage}${expandQuery}&sort=-created_at`;
+    const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
+    const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
+    return this.parseListResponse<LedgerEntry>(response);
+  }
+  
+  async getCampaigns(page = 1, perPage = 25, expand: string[] = []): Promise<ListResponse<Campaign>> {
+    const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
+    const targetUrl = `${this.billettoApiBase}/campaigns?page=${page}&per_page=${perPage}${expandQuery}&sort=-created_at`;
+    const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
+    const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
+    return this.parseListResponse<Campaign>(response);
+  }
+
+  async getTargetGroups(page = 1, perPage = 25): Promise<ListResponse<TargetGroup>> {
+    const targetUrl = `${this.billettoApiBase}/target_groups?page=${page}&per_page=${perPage}&sort=-created_at`;
+    const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
+    const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
+    return this.parseListResponse<TargetGroup>(response);
+  }
+
+  async getTargetGroupMembers(groupId: string, page = 1, perPage = 50): Promise<ListResponse<TargetGroupMember>> {
+    const targetUrl = `${this.billettoApiBase}/target_groups/${groupId}/members?page=${page}&per_page=${perPage}`;
+    const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
+    const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
+    return this.parseListResponse<TargetGroupMember>(response);
+  }
+  
+  async getEventOrders(eventId: string, page = 1, perPage = 100): Promise<ListResponse<Order>> {
+    const targetUrl = `${this.billettoApiBase}/events/${eventId}/orders?page=${page}&per_page=${perPage}&sort=created_at&expand=order_lines`;
+    const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
+    const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
+    return this.parseListResponse<Order>(response);
+  }
+
+  async getEventLedgerEntries(eventId: string, page = 1, perPage = 100): Promise<ListResponse<LedgerEntry>> {
+    const targetUrl = `${this.billettoApiBase}/events/${eventId}/ledger_entries?page=${page}&per_page=${perPage}&sort=-created_at`;
     const proxyUrl = `${CORS_PROXY_URL}${targetUrl}`;
     const response = await this.makeRequest(proxyUrl, REQUEST_TIMEOUT, targetUrl);
     return this.parseListResponse<LedgerEntry>(response);

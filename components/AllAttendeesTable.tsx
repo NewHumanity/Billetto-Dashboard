@@ -2,9 +2,9 @@
 import React from 'react';
 import { Attendee, SortConfig } from '../types';
 
-interface AttendeesTableProps {
+interface AllAttendeesTableProps {
   attendees: Attendee[];
-  currency: string;
+  onSelectAttendee: (attendeeId: string) => void;
   requestSort: (key: keyof Attendee | string) => void;
   sortConfig: SortConfig<Attendee> | null;
 }
@@ -20,23 +20,28 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
     return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
 };
 
-const AttendeesTable: React.FC<AttendeesTableProps> = ({ attendees, currency, requestSort, sortConfig }) => {
-  const formatCurrency = (value: number, currencyCode: string) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currencyCode,
-    }).format(value / 100); // Value is in cents
-  }
+const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSelectAttendee, requestSort, sortConfig }) => {
+    
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('en-GB', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   const statusColorMap: { [key: string]: string } = {
     sold: 'bg-green-500/20 text-green-400',
     refunded: 'bg-yellow-500/20 text-yellow-400',
     cancelled: 'bg-red-500/20 text-red-400',
     reserved: 'bg-blue-500/20 text-blue-400',
+    manually_generated: 'bg-purple-500/20 text-purple-400',
     default: 'bg-slate-500/20 text-slate-400'
   };
   
-  const SortableHeader: React.FC<{ title: string, sortKey: keyof Attendee}> = ({ title, sortKey }) => {
+  const SortableHeader: React.FC<{ title: string, sortKey: keyof Attendee | string }> = ({ title, sortKey }) => {
     const isSorted = sortConfig?.key === sortKey;
     return (
         <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-white">
@@ -48,32 +53,42 @@ const AttendeesTable: React.FC<AttendeesTableProps> = ({ attendees, currency, re
     );
   };
 
+
+  if (attendees.length === 0) {
+    return <p className="text-slate-400 text-center py-8">No attendees found for this account.</p>;
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-slate-700">
-        <thead className="bg-slate-800/80">
+        <thead className="bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Name" sortKey="name" />
             <SortableHeader title="Email" sortKey="email" />
+            <SortableHeader title="Event" sortKey="event.name" />
             <SortableHeader title="Status" sortKey="state" />
-            <SortableHeader title="Price" sortKey="price" />
+            <SortableHeader title="Date" sortKey="created_at" />
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-700 bg-slate-800/50">
           {attendees.map((attendee) => (
-            <tr key={attendee.id} className="hover:bg-slate-700/50 transition-colors">
-              <td className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">
-                {attendee.name}
-              </td>
+            <tr 
+              key={attendee.id} 
+              className="hover:bg-slate-700/50 transition-colors duration-200 cursor-pointer"
+              onClick={() => onSelectAttendee(attendee.id)}
+              tabIndex={0}
+              onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectAttendee(attendee.id)}
+              aria-label={`View details for attendee ${attendee.name}`}
+            >
+              <td className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{attendee.name}</td>
               <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{attendee.email}</td>
+              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{attendee.event?.name || 'N/A'}</td>
               <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColorMap[attendee.state] || statusColorMap.default}`}>
                     {(attendee.state || '').replace(/_/g, ' ')}
                 </span>
               </td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">
-                {formatCurrency(attendee.price, currency)}
-              </td>
+              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(attendee.created_at)}</td>
             </tr>
           ))}
         </tbody>
@@ -82,4 +97,4 @@ const AttendeesTable: React.FC<AttendeesTableProps> = ({ attendees, currency, re
   );
 };
 
-export default AttendeesTable;
+export default AllAttendeesTable;

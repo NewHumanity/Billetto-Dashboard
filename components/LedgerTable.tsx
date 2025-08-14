@@ -1,12 +1,25 @@
 
 import React from 'react';
-import { LedgerEntry } from '../types';
+import { LedgerEntry, SortConfig } from '../types';
 
 interface LedgerTableProps {
   entries: LedgerEntry[];
+  requestSort: (key: keyof LedgerEntry | string) => void;
+  sortConfig: SortConfig<LedgerEntry> | null;
 }
 
-const LedgerTable: React.FC<LedgerTableProps> = ({ entries }) => {
+const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }) => {
+    const iconClass = "h-4 w-4 transition-opacity";
+    if (!direction) {
+        return <svg xmlns="http://www.w3.org/2000/svg" className={`${iconClass} text-slate-500 opacity-50 group-hover:opacity-100`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" /></svg>;
+    }
+    if (direction === 'ascending') {
+        return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>;
+    }
+    return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
+};
+
+const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortConfig }) => {
     
   const formatCurrency = (value: number, currencyCode: string) => {
     return new Intl.NumberFormat('en-US', {
@@ -34,6 +47,18 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries }) => {
     other: 'text-slate-400',
   };
 
+  const SortableHeader: React.FC<{ title: string, sortKey: keyof LedgerEntry | string, className?: string }> = ({ title, sortKey, className = '' }) => {
+    const isSorted = sortConfig?.key === sortKey;
+    return (
+        <th scope="col" className={`py-3.5 px-4 text-left text-sm font-semibold text-white ${className}`}>
+            <button onClick={() => requestSort(sortKey)} className={`flex items-center gap-2 group ${className.includes('text-right') ? 'justify-end w-full' : ''}`}>
+                {title}
+                <SortIndicator direction={isSorted ? sortConfig?.direction : undefined} />
+            </button>
+        </th>
+    );
+  };
+
   if (entries.length === 0) {
     return <p className="text-slate-400 text-center py-8">No ledger entries found.</p>;
   }
@@ -43,11 +68,11 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries }) => {
       <table className="min-w-full divide-y divide-slate-700">
         <thead className="bg-slate-900/80 sticky top-0">
           <tr>
-            <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-white">Date</th>
-            <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-white">Type</th>
-            <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-white">Description</th>
-            <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-white">Event</th>
-            <th scope="col" className="py-3.5 px-4 text-right text-sm font-semibold text-white">Amount</th>
+            <SortableHeader title="Date" sortKey="created_at" />
+            <SortableHeader title="Type" sortKey="type" />
+            <SortableHeader title="Description" sortKey="description" />
+            <SortableHeader title="Event" sortKey="event.name" />
+            <SortableHeader title="Amount" sortKey="amount" className="text-right"/>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-700 bg-slate-800/50">

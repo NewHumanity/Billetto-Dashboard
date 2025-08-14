@@ -17,6 +17,12 @@ export interface Attendee {
   fee: number; // in cents
   created_at: string;
   state: 'sold' | 'reserved' | 'refunded' | 'manually_generated' | 'cancelled' | 'available' | 'door_sale' | 'draft' | 'failed' | 'mass_generated';
+  event?: {
+    id: string;
+    name: string;
+    starts_at: string;
+    currency: string;
+  };
 }
 
 export interface BillettoEvent {
@@ -76,12 +82,78 @@ export interface LedgerEntry {
   order_id?: string;
 }
 
+export interface Campaign {
+  id: string;
+  object: 'campaign';
+  name: string;
+  type: 'discount_code' | 'voucher';
+  state: 'active' | 'inactive' | 'expired' | 'scheduled';
+  discount_type: 'percentage' | 'fixed_amount';
+  discount_value: number; // in cents for fixed_amount
+  usage_limit: number | null;
+  usage_count: number;
+  created_at: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  event?: { // Expanded
+    id: string;
+    name: string;
+  };
+}
+
+export interface TicketGroup {
+  id: string;
+  object: 'ticket_group';
+  name: string;
+  price: number; // in cents
+  fee: number; // in cents
+  currency: string;
+  sold_count: number;
+  capacity: number | null;
+  state: 'on_sale' | 'sold_out' | 'off_sale' | 'hidden';
+  starts_at: string | null;
+  ends_at: string | null;
+  revenue?: number; // Calculated field for sorting
+}
+
+export interface TargetGroup {
+  id: string;
+  object: 'target_group';
+  name: string;
+  members_count: number;
+  created_at: string;
+}
+
+export interface TargetGroupMember {
+  id: string;
+  object: 'target_group_member';
+  name: string;
+  email: string;
+}
+
 export type EventDetails = {
     event: BillettoEvent;
     attendees: Attendee[];
+    ticketGroups: TicketGroup[];
     stats: {
-        totalRevenue: number;
         totalTicketsSold: number;
+        totalRevenue: number; // This is gross revenue from tickets
         currency: string;
     };
+    // New optional fields for combined data
+    financialSummary?: {
+        grossRevenue: number;
+        billettoFees: number;
+        netPayout: number;
+    };
+    salesByChannel?: { name: string; count: number; }[];
+    salesVelocity?: { date: string; tickets: number; }[];
+}
+
+
+export type SortDirection = 'ascending' | 'descending';
+
+export interface SortConfig<T> {
+  key: keyof T | string; // Allow string for nested paths e.g. 'event.name'
+  direction: SortDirection;
 }
