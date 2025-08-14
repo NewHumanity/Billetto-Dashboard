@@ -17,7 +17,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('fetch', (event) => {
   // Do not cache API requests made through the CORS proxy
-  if (event.request.url.includes('corsproxy.io')) {
+  if (event.request.url.includes('proxy.cors.sh')) {
     return event.respondWith(fetch(event.request));
   }
 

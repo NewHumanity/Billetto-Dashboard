@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { TicketGroup, SortConfig } from '../types';
 
@@ -50,6 +49,17 @@ const TicketTypesTable: React.FC<TicketTypesTableProps> = ({ ticketGroups, curre
       currency: currencyCode,
     }).format(value / 100);
   };
+
+  const formatDateRange = (starts: string | null, ends: string | null) => {
+    if (!starts && !ends) return <span className="text-slate-400 italic">Always on sale</span>;
+    
+    const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-GB', { month: 'short', day: 'numeric', year: '2-digit' });
+
+    if (!starts && ends) return `Ends ${formatDate(ends)}`;
+    if (starts && !ends) return `Starts ${formatDate(starts)}`;
+    
+    return `${formatDate(starts!)} - ${formatDate(ends!)}`;
+  };
   
   const stateColorMap: { [key: string]: string } = {
     on_sale: 'bg-green-500/20 text-green-400',
@@ -81,6 +91,7 @@ const TicketTypesTable: React.FC<TicketTypesTableProps> = ({ ticketGroups, curre
           <tr>
             <SortableHeader title="Name" sortKey="name" className="w-1/4" />
             <SortableHeader title="Status" sortKey="state" />
+            <SortableHeader title="Sale Period" sortKey="starts_at" />
             <SortableHeader title="Sales" sortKey="sold_count" className="w-1/3" />
             <SortableHeader title="Price" sortKey="price" className="text-right"/>
             <SortableHeader title="Revenue" sortKey="revenue" className="text-right" />
@@ -95,12 +106,15 @@ const TicketTypesTable: React.FC<TicketTypesTableProps> = ({ ticketGroups, curre
                   {(ticketGroup.state || '').replace('_', ' ')}
                 </span>
               </td>
+              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">
+                {formatDateRange(ticketGroup.starts_at, ticketGroup.ends_at)}
+              </td>
               <td className="py-4 px-4">
-                <SalesProgress sold={ticketGroup.sold_count} capacity={ticketGroup.capacity} />
+                <SalesProgress sold={ticketGroup.sold_count || 0} capacity={ticketGroup.capacity} />
               </td>
               <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 text-right">{formatCurrency(ticketGroup.price, currency)}</td>
               <td className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-white text-right">
-                {formatCurrency((ticketGroup.price * ticketGroup.sold_count), currency)}
+                {formatCurrency(ticketGroup.revenue ?? 0, currency)}
               </td>
             </tr>
           ))}

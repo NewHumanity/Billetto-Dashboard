@@ -3,18 +3,20 @@ import React, { useState } from 'react';
 
 interface SettingsFormProps {
   initialApiKey: string;
-  onSave: (apiKey: string) => Promise<void>;
+  initialUseProxy: boolean;
+  onSave: (apiKey: string, useProxy: boolean) => Promise<void>;
   onClose: () => void;
 }
 
-const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, onSave, onClose }) => {
+const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, initialUseProxy, onSave, onClose }) => {
   const [apiKey, setApiKey] = useState(initialApiKey);
+  const [useProxy, setUseProxy] = useState(initialUseProxy);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    await onSave(apiKey);
+    await onSave(apiKey, useProxy);
     setIsSaving(false);
   };
 
@@ -47,6 +49,25 @@ const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, onSave, onCl
                         aria-required="true"
                     />
                     <p className="text-xs text-slate-500 mt-2">Find this in your Billetto account under Developers.</p>
+                </div>
+
+                <div>
+                    <label htmlFor="useProxy" className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            id="useProxy"
+                            checked={useProxy}
+                            onChange={(e) => setUseProxy(e.target.checked)}
+                            className="h-5 w-5 rounded bg-slate-700 border-slate-500 text-brand-primary focus:ring-brand-primary"
+                            aria-describedby="proxy-description"
+                        />
+                        <span className="text-sm font-medium text-slate-300">
+                            Use CORS Proxy
+                        </span>
+                    </label>
+                    <p id="proxy-description" className="text-xs text-slate-500 mt-2">
+                        Required for use in a web browser. Disable if you are running this in an environment without CORS restrictions (e.g. via a local server).
+                    </p>
                 </div>
                 
                 <button

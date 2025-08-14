@@ -8,6 +8,22 @@ export interface ListResponse<T> {
   url: string;
 }
 
+export interface BookingQuestion {
+  id: string;
+  object: 'booking_question';
+  name: string;
+  description?: string;
+  required: boolean;
+  scope: 'order' | 'ticket';
+}
+
+export interface BookingQuestionResponse {
+  id: string;
+  object: 'booking_question_response';
+  text: string;
+  question: BookingQuestion; // Expanded
+}
+
 export interface Attendee {
   id: string;
   object: 'attendee';
@@ -23,6 +39,7 @@ export interface Attendee {
     starts_at: string;
     currency: string;
   };
+  booking_question_responses?: ListResponse<BookingQuestionResponse>;
 }
 
 export interface BillettoEvent {
@@ -65,6 +82,7 @@ export interface Order {
   billetto_fees: number;
   payout: number; // in cents
   sales_channel: string;
+  booking_question_responses?: ListResponse<BookingQuestionResponse>;
 }
 
 export interface LedgerEntry {
@@ -131,9 +149,34 @@ export interface TargetGroupMember {
   email: string;
 }
 
+// Types for Booking Question Analysis
+export type QuestionType = 'multiple-choice' | 'open-ended';
+
+export interface WordCloudData {
+  text: string;
+  value: number;
+}
+
+export interface AggregatedAnswer {
+  text: string;
+  count: number;
+}
+
+export interface AggregatedQuestion {
+  id: string;
+  name: string;
+  type: QuestionType;
+  totalResponses: number;
+  answers: AggregatedAnswer[];
+  wordCloudData?: WordCloudData[];
+}
+
+export type BookingQuestionsAnalysis = AggregatedQuestion[];
+
+
 export type EventDetails = {
     event: BillettoEvent;
-    attendees: Attendee[];
+    attendees: Attendee[]; // For paginated display
     ticketGroups: TicketGroup[];
     stats: {
         totalTicketsSold: number;
@@ -148,6 +191,10 @@ export type EventDetails = {
     };
     salesByChannel?: { name: string; count: number; }[];
     salesVelocity?: { date: string; tickets: number; }[];
+    bookingQuestionsAnalysis?: BookingQuestionsAnalysis;
+    // Full datasets for analysis
+    allOrders?: Order[];
+    allAttendees?: Attendee[];
 }
 
 

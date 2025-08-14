@@ -1,13 +1,14 @@
-
 import React from 'react';
 import { EventDetails, Attendee, TicketGroup, SortConfig } from '../types';
 import StatCard from './StatCard';
 import AttendeesTable from './EventsTable';
 import Pagination from './Pagination';
 import TicketTypesTable from './TicketTypesTable';
-import { CalendarIcon, TicketIcon, CurrencyIcon, TicketGroupIcon, UserIcon, FeeIcon, NetPayoutIcon } from './icons';
+import { CalendarIcon, TicketIcon, CurrencyIcon, TicketGroupIcon, UserIcon, FeeIcon, NetPayoutIcon, ExternalLinkIcon, QuestionIcon } from './icons';
 import SalesVelocityChart from './SalesVelocityChart';
 import SalesChannelChart from './SalesChannelChart';
+import BookingQuestionsAnalysis from './BookingQuestionsAnalysis';
+import Loader from './Loader';
 
 
 interface DashboardProps {
@@ -15,12 +16,16 @@ interface DashboardProps {
     attendeePage: number;
     attendeesPerPage: number;
     onAttendeePageChange: (page: number) => void;
-    activeSubView: 'overview' | 'attendees';
-    onSetSubView: (view: 'overview' | 'attendees') => void;
+    activeSubView: 'overview' | 'attendees' | 'bookingQuestions';
+    onSetSubView: (view: 'overview' | 'attendees' | 'bookingQuestions') => void;
     requestAttendeeSort: (key: keyof Attendee | string) => void;
     attendeeSortConfig: SortConfig<Attendee> | null;
     requestTicketGroupSort: (key: keyof TicketGroup | string) => void;
     ticketGroupSortConfig: SortConfig<TicketGroup> | null;
+    loadingAnalysis: boolean;
+    onTriggerAnalysis: (force: boolean) => void;
+    filterTicketGroupId: string;
+    onFilterChange: (ticketGroupId: string) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -33,9 +38,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     requestAttendeeSort,
     attendeeSortConfig,
     requestTicketGroupSort,
-    ticketGroupSortConfig
+    ticketGroupSortConfig,
+    loadingAnalysis,
+    onTriggerAnalysis,
+    filterTicketGroupId,
+    onFilterChange,
 }) => {
-  const { event, attendees, ticketGroups, stats, financialSummary, salesByChannel, salesVelocity } = details;
+  const { event, attendees, ticketGroups, stats, financialSummary, salesByChannel, salesVelocity, bookingQuestionsAnalysis } = details;
   const { totalTicketsSold, currency } = stats;
 
   const formatCurrency = (value: number, currencyCode: string) => {
@@ -72,8 +81,21 @@ const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
         <div className="bg-slate-800 p-6 rounded-xl shadow-lg">
-            <h2 className="text-3xl font-bold text-white tracking-tight">{event.name}</h2>
-            <p className="text-slate-400 mt-1">{new Date(event.starts_at).toLocaleString()}</p>
+            <div className="flex justify-between items-center gap-4 flex-wrap">
+                <div>
+                    <h2 className="text-3xl font-bold text-white tracking-tight">{event.name}</h2>
+                    <p className="text-slate-400 mt-1">{new Date(event.starts_at).toLocaleString()}</p>
+                </div>
+                <a 
+                    href={event.public_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex-shrink-0 flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-brand-primary"
+                >
+                    <ExternalLinkIcon />
+                    <span>View on Billetto</span>
+                </a>
+            </div>
         </div>
 
         {/* Sub-navigation Tabs */}
@@ -91,6 +113,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                     isActive={activeSubView === 'attendees'}
                     onClick={() => onSetSubView('attendees')}
                     icon={<UserIcon/>}
+                />
+                <TabButton 
+                    label="Booking Questions"
+                    isActive={activeSubView === 'bookingQuestions'}
+                    onClick={() => onSetSubView('bookingQuestions')}
+                    icon={<QuestionIcon/>}
                 />
             </nav>
         </div>
@@ -165,6 +193,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                     />
                 </div>
             </div>
+        )}
+
+        {activeSubView === 'bookingQuestions' && (
+            loadingAnalysis ? <Loader message="Analyzing booking questions..." /> :
+            <BookingQuestionsAnalysis 
+                details={details} 
+                analysis={bookingQuestionsAnalysis} 
+                onTriggerAnalysis={onTriggerAnalysis} 
+                filterTicketGroupId={filterTicketGroupId}
+                onFilterChange={onFilterChange}
+            />
         )}
     </div>
   );

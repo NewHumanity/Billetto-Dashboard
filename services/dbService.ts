@@ -1,8 +1,8 @@
 import { openDB, IDBPDatabase } from 'idb';
-import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee } from '../types';
+import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee, BookingQuestionsAnalysis } from '../types';
 
 const DB_NAME = 'billetto-dashboard-cache';
-const DB_VERSION = 3; // Bump version for schema change
+const DB_VERSION = 5; // Bump version for schema change
 
 const STORES = {
     KEYVAL: 'keyval',
@@ -12,10 +12,12 @@ const STORES = {
     ORDER_DETAILS: 'orderDetails',
     LEDGER: 'ledger',
     CAMPAIGNS: 'campaigns',
+    CAMPAIGN_ORDERS: 'campaignOrders',
     TARGET_GROUPS: 'targetGroups',
     TARGET_GROUP_MEMBERS: 'targetGroupMembers',
     ATTENDEES: 'attendees',
     ATTENDEE_DETAILS: 'attendeeDetails',
+    BOOKING_QUESTIONS_ANALYSIS: 'bookingQuestionsAnalysis',
 };
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -53,13 +55,22 @@ const initDB = () => {
             if (!db.objectStoreNames.contains(STORES.TARGET_GROUP_MEMBERS)) {
                 db.createObjectStore(STORES.TARGET_GROUP_MEMBERS);
             }
-            // Added in v3
             if (oldVersion < 3) {
                  if (!db.objectStoreNames.contains(STORES.ATTENDEES)) {
                     db.createObjectStore(STORES.ATTENDEES);
                 }
                 if (!db.objectStoreNames.contains(STORES.ATTENDEE_DETAILS)) {
                     db.createObjectStore(STORES.ATTENDEE_DETAILS, { keyPath: 'id' });
+                }
+            }
+             if (oldVersion < 4) {
+                if (!db.objectStoreNames.contains(STORES.CAMPAIGN_ORDERS)) {
+                    db.createObjectStore(STORES.CAMPAIGN_ORDERS);
+                }
+            }
+            if (oldVersion < 5) {
+                if (!db.objectStoreNames.contains(STORES.BOOKING_QUESTIONS_ANALYSIS)) {
+                    db.createObjectStore(STORES.BOOKING_QUESTIONS_ANALYSIS);
                 }
             }
         },
@@ -99,6 +110,17 @@ export const setEventDetailsCache = async (details: EventDetails) => {
     const db = await initDB();
     return db.put(STORES.EVENT_DETAILS, details);
 };
+
+// --- Booking Questions Analysis ---
+export const getBookingQuestionsAnalysisCache = async (eventId: string): Promise<BookingQuestionsAnalysis | undefined> => {
+    const db = await initDB();
+    return db.get(STORES.BOOKING_QUESTIONS_ANALYSIS, eventId);
+};
+export const setBookingQuestionsAnalysisCache = async (eventId: string, analysis: BookingQuestionsAnalysis) => {
+    const db = await initDB();
+    return db.put(STORES.BOOKING_QUESTIONS_ANALYSIS, analysis, eventId);
+};
+
 
 // --- Orders ---
 export const getOrdersCache = async (page: number): Promise<{ ordersData?: ListResponse<Order>, lastUpdated?: Date }> => {
@@ -151,6 +173,17 @@ export const setCampaignsCache = async (page: number, campaignsData: ListRespons
     await db.put(STORES.CAMPAIGNS, campaignsData, `page-${page}`);
     await setInKeyval('campaigns_last_updated', new Date());
 };
+
+// --- Campaign Orders ---
+export const getCampaignOrdersCache = async (campaignId: string, page: number): Promise<ListResponse<Order> | undefined> => {
+    const db = await initDB();
+    return db.get(STORES.CAMPAIGN_ORDERS, `${campaignId}-page-${page}`);
+};
+export const setCampaignOrdersCache = async (campaignId: string, page: number, ordersData: ListResponse<Order>) => {
+    const db = await initDB();
+    return db.put(STORES.CAMPAIGN_ORDERS, ordersData, `${campaignId}-page-${page}`);
+};
+
 
 // --- Target Groups ---
 export const getTargetGroupsCache = async (page: number): Promise<{ groupsData?: ListResponse<TargetGroup>, lastUpdated?: Date }> => {

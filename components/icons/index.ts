@@ -11,3 +11,5 @@ export * from './TargetGroupIcon';
 export * from './UserIcon';
 export * from './FeeIcon';
 export * from './NetPayoutIcon';
+export * from './ExternalLinkIcon';
+export * from './QuestionIcon';

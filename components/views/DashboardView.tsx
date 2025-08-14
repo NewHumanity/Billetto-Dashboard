@@ -1,0 +1,114 @@
+import React from 'react';
+import { BillettoApiClient } from '../../services/billettoService';
+import { useEvents } from '../../hooks/useEvents';
+import Loader from '../Loader';
+import ErrorMessage from '../ErrorMessage';
+import RefreshBar from '../RefreshBar';
+import EventListItem from '../EventListItem';
+import Dashboard from '../Dashboard';
+
+interface DashboardViewProps {
+    apiClient: BillettoApiClient | null;
+}
+
+const ATTENDEES_PER_PAGE = 50;
+
+const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
+    const {
+        events, loadingEvents, eventsError, lastUpdatedEvents, fetchAndCacheEvents,
+        filteredEvents, eventFilter, setEventFilter, selectedEventId, setSelectedEventId,
+        finalEventDetails, loadingDetails, detailsError,
+        eventDetailView, setEventDetailView, attendeePage, setAttendeePage,
+        requestEventAttendeesSort, eventAttendeesSortConfig,
+        requestTicketGroupsSort, ticketGroupsSortConfig,
+        loadingAnalysis, triggerAnalysis,
+        filterTicketGroupId, setFilterTicketGroupId
+    } = useEvents(apiClient);
+
+    const filterOptions = ['published', 'draft', 'completed', 'canceled', 'all'];
+
+    const renderEventContent = () => {
+        if (loadingEvents && events.length === 0) {
+          return <Loader />;
+        }
+        if (eventsError) {
+          return <ErrorMessage message={eventsError} />;
+        }
+        if (!apiClient) {
+          return (
+            <div className="text-center p-8 bg-slate-800 rounded-lg">
+              <h2 className="text-2xl font-semibold text-white">Welcome</h2>
+              <p className="mt-2 text-slate-400">Please provide your API Key to view events.</p>
+            </div>
+          );
+        }
+        if (events.length === 0 && !loadingEvents) {
+          return <ErrorMessage message="No events found for this account. Click 'Refresh Data' to try again." />;
+        }
+        if (filteredEvents.length === 0) {
+          return <ErrorMessage message={`No ${eventFilter} events found. Try another filter.`} />;
+        }
+        return (
+          <ul className="space-y-3">
+            {filteredEvents.map(event => (
+              <EventListItem
+                key={event.id}
+                event={event}
+                isSelected={selectedEventId === event.id}
+                onSelect={() => setSelectedEventId(event.id)}
+              />
+            ))}
+          </ul>
+        );
+    };
+
+    return (
+        <div className="animate-fade-in">
+            <RefreshBar lastUpdated={lastUpdatedEvents} loading={loadingEvents} onRefresh={fetchAndCacheEvents} viewName="events" />
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-8">
+                <div className="md:col-span-1 lg:col-span-1 bg-slate-800 p-4 rounded-xl shadow-lg h-fit">
+                    <h2 className="text-xl font-semibold text-white mb-4 px-2">Your Events</h2>
+                    <div className="flex flex-wrap gap-1 mb-4 bg-slate-900/50 p-1 rounded-lg">
+                        {filterOptions.map(filter => (
+                            <button
+                                key={filter}
+                                onClick={() => setEventFilter(filter)}
+                                className={`flex-grow text-center px-2 py-1.5 text-xs font-semibold rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-primary/80 ${
+                                    eventFilter === filter
+                                        ? 'bg-brand-primary text-white shadow'
+                                        : 'text-slate-300 hover:bg-slate-700'
+                                }`}
+                            >
+                                <span className="capitalize">{filter}</span>
+                            </button>
+                        ))}
+                    </div>
+                    {renderEventContent()}
+                </div>
+                <div className="md:col-span-2 lg:col-span-3">
+                    {!selectedEventId && <div className="flex items-center justify-center h-full rounded-xl bg-slate-800/50 border-2 border-dashed border-slate-700"><p className="text-slate-400">Select an event to view its statistics.</p></div>}
+                    {loadingDetails && !finalEventDetails && <Loader message="Combining and analyzing event data..." />}
+                    {detailsError && <ErrorMessage message={detailsError} />}
+                    {finalEventDetails && <Dashboard 
+                        details={finalEventDetails} 
+                        attendeePage={attendeePage} 
+                        onAttendeePageChange={setAttendeePage} 
+                        attendeesPerPage={ATTENDEES_PER_PAGE}
+                        activeSubView={eventDetailView}
+                        onSetSubView={setEventDetailView}
+                        requestAttendeeSort={requestEventAttendeesSort}
+                        attendeeSortConfig={eventAttendeesSortConfig}
+                        requestTicketGroupSort={requestTicketGroupsSort}
+                        ticketGroupSortConfig={ticketGroupsSortConfig}
+                        loadingAnalysis={loadingAnalysis}
+                        onTriggerAnalysis={triggerAnalysis}
+                        filterTicketGroupId={filterTicketGroupId}
+                        onFilterChange={setFilterTicketGroupId}
+                    />}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default DashboardView;

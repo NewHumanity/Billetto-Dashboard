@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { LedgerEntry, SortConfig } from '../types';
 
@@ -6,6 +7,7 @@ interface LedgerTableProps {
   entries: LedgerEntry[];
   requestSort: (key: keyof LedgerEntry | string) => void;
   sortConfig: SortConfig<LedgerEntry> | null;
+  onSelectOrder: (orderId: string) => void;
 }
 
 const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }) => {
@@ -19,7 +21,7 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
     return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
 };
 
-const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortConfig }) => {
+const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortConfig, onSelectOrder }) => {
     
   const formatCurrency = (value: number, currencyCode: string) => {
     return new Intl.NumberFormat('en-US', {
@@ -76,21 +78,38 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-700 bg-slate-800/50">
-          {entries.map((entry) => (
-            <tr key={entry.id} className="hover:bg-slate-700/50 transition-colors">
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(entry.created_at)}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm font-medium">
-                <span className={`capitalize ${typeColorMap[entry.type] || typeColorMap.other}`}>
-                  {(entry.type || '').replace('_', ' ')}
-                </span>
-              </td>
-              <td className="py-4 px-4 text-sm text-white max-w-sm truncate">{entry.description}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{entry.event?.name || 'N/A'}</td>
-              <td className={`whitespace-nowrap py-4 px-4 text-sm text-right font-semibold ${entry.amount > 0 ? 'text-green-400' : entry.amount < 0 ? 'text-red-400' : 'text-slate-300'}`}>
-                {formatCurrency(entry.amount, entry.currency)}
-              </td>
-            </tr>
-          ))}
+          {entries.map((entry) => {
+            const isClickable = !!entry.order_id;
+            return (
+                <tr 
+                  key={entry.id}
+                  className={`transition-colors ${isClickable ? 'cursor-pointer hover:bg-slate-700/50' : 'hover:bg-slate-700/20'}`}
+                  onClick={() => isClickable && entry.order_id && onSelectOrder(entry.order_id)}
+                  onKeyPress={(e) => isClickable && entry.order_id && (e.key === 'Enter' || e.key === ' ') && onSelectOrder(entry.order_id)}
+                  tabIndex={isClickable ? 0 : -1}
+                  aria-label={isClickable ? `View details for order related to this ledger entry` : undefined}
+                >
+                    <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(entry.created_at)}</td>
+                    <td className="whitespace-nowrap py-4 px-4 text-sm font-medium">
+                        <span className={`capitalize ${typeColorMap[entry.type] || typeColorMap.other}`}>
+                        {(entry.type || '').replace('_', ' ')}
+                        </span>
+                    </td>
+                    <td className="py-4 px-4 text-sm text-white max-w-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate">{entry.description}</span>
+                        {isClickable && (
+                           <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/80 hover:text-brand-primary">[View Order]</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{entry.event?.name || 'N/A'}</td>
+                    <td className={`whitespace-nowrap py-4 px-4 text-sm text-right font-semibold ${entry.amount > 0 ? 'text-green-400' : entry.amount < 0 ? 'text-red-400' : 'text-slate-300'}`}>
+                        {formatCurrency(entry.amount, entry.currency)}
+                    </td>
+                </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
