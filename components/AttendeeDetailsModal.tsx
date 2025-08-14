@@ -36,6 +36,13 @@ const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendee, l
     default: 'bg-slate-500/20 text-slate-400'
   };
 
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+        document.body.style.overflow = 'unset';
+    };
+  }, []);
+
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {

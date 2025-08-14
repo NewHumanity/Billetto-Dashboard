@@ -26,6 +26,13 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, loading, e
     });
   };
 
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+        document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -56,7 +63,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, loading, e
         {error && <ErrorMessage message={error} />}
         {order && (
           <div className="overflow-y-auto space-y-6 mt-4 pr-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
                 <div className="bg-slate-900/50 p-4 rounded-lg">
                     <h3 className="font-semibold text-slate-300 mb-2">Buyer Information</h3>
                     <p><strong className="text-white">Name:</strong> {order.buyer_name}</p>

@@ -4,8 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Billetto Statistics Viewer</title>
+    
+    <!-- PWA Manifest & Theme -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#1E293B" />
+    
+    <!-- iOS PWA Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Billetto Stats" />
+    <link rel="apple-touch-icon" href="https://www.billetto.se/images/icons/apple-touch-icon-192x192.png" />
+    
+    <!-- Scripts & Styles -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -19,6 +29,51 @@
         },
       }
     </script>
+    <style>
+      /* Custom scrollbar for a more polished look */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #1e293b; /* slate-800 */ }
+      ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; /* slate-600 */ }
+      ::-webkit-scrollbar-thumb:hover { background: #64748b; /* slate-500 */ }
+
+      /* Responsive Table to Card styles */
+      @media (max-width: 767px) { /* Tailwind's `md` breakpoint */
+        .responsive-table thead {
+          display: none;
+        }
+        .responsive-table, .responsive-table tbody, .responsive-table tr {
+          display: block;
+        }
+        .responsive-table tr {
+          background-color: rgba(30, 41, 59, 0.5); /* bg-slate-800/50 */
+          border-radius: 0.5rem; /* rounded-lg */
+          margin-bottom: 1rem;
+          border: 1px solid rgb(51, 65, 85); /* border-slate-700 */
+          padding: 0.5rem 1rem;
+        }
+        .responsive-table td {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding-top: 0.75rem;
+          padding-bottom: 0.75rem;
+          border-bottom: 1px solid rgba(71, 85, 105, 0.3); /* slate-700/30 */
+          text-align: right;
+          white-space: normal;
+          max-width: 100%;
+        }
+        .responsive-table td:last-child {
+          border-bottom: none;
+        }
+        .responsive-table td::before {
+          content: attr(data-label);
+          font-weight: 600;
+          color: #94a3b8; /* slate-400 */
+          text-align: left;
+          margin-right: 1rem;
+        }
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {

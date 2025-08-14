@@ -86,7 +86,7 @@ const TicketTypesTable: React.FC<TicketTypesTableProps> = ({ ticketGroups, curre
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-700">
+      <table className="min-w-full responsive-table">
         <thead className="bg-slate-800/80">
           <tr>
             <SortableHeader title="Name" sortKey="name" className="w-1/4" />
@@ -97,23 +97,23 @@ const TicketTypesTable: React.FC<TicketTypesTableProps> = ({ ticketGroups, curre
             <SortableHeader title="Revenue" sortKey="revenue" className="text-right" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
           {ticketGroups.map((ticketGroup) => (
-            <tr key={ticketGroup.id} className="hover:bg-slate-700/50 transition-colors">
-              <td className="py-4 px-4 font-semibold text-white truncate">{ticketGroup.name}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm">
+            <tr key={ticketGroup.id} className="md:hover:bg-slate-700/50 transition-colors">
+              <td data-label="Name" className="py-4 px-4 font-semibold text-white truncate">{ticketGroup.name}</td>
+              <td data-label="Status" className="whitespace-nowrap py-4 px-4 text-sm">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${stateColorMap[ticketGroup.state] || ''}`}>
                   {(ticketGroup.state || '').replace('_', ' ')}
                 </span>
               </td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">
+              <td data-label="Sale Period" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">
                 {formatDateRange(ticketGroup.starts_at, ticketGroup.ends_at)}
               </td>
-              <td className="py-4 px-4">
+              <td data-label="Sales" className="py-4 px-4">
                 <SalesProgress sold={ticketGroup.sold_count || 0} capacity={ticketGroup.capacity} />
               </td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 text-right">{formatCurrency(ticketGroup.price, currency)}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-white text-right">
+              <td data-label="Price" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatCurrency(ticketGroup.price, currency)}</td>
+              <td data-label="Revenue" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-white">
                 {formatCurrency(ticketGroup.revenue ?? 0, currency)}
               </td>
             </tr>

@@ -59,6 +59,13 @@ interface CampaignDetailsModalProps {
 
 const CampaignDetailsModal: React.FC<CampaignDetailsModalProps> = ({ campaign, orders, pagination, loading, error, onClose, onPageChange, itemsPerPage }) => {
   
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+        document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
   };

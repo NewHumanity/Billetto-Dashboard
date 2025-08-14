@@ -9,10 +9,12 @@ import SalesVelocityChart from './SalesVelocityChart';
 import SalesChannelChart from './SalesChannelChart';
 import BookingQuestionsAnalysis from './BookingQuestionsAnalysis';
 import Loader from './Loader';
+import { StatCardSkeleton, ChartSkeleton, TableSkeleton } from './Skeleton';
 
 
 interface DashboardProps {
     details: EventDetails;
+    loading: boolean;
     attendeePage: number;
     attendeesPerPage: number;
     onAttendeePageChange: (page: number) => void;
@@ -30,6 +32,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     details, 
+    loading,
     attendeePage, 
     onAttendeePageChange, 
     attendeesPerPage, 
@@ -127,7 +130,13 @@ const Dashboard: React.FC<DashboardProps> = ({
              <div className="space-y-8 animate-fade-in" role="tabpanel">
                 {/* Stat Cards */}
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                    {financialSummary ? (
+                    {loading ? (
+                        <>
+                            <StatCardSkeleton />
+                            <StatCardSkeleton />
+                            <StatCardSkeleton />
+                        </>
+                    ) : financialSummary ? (
                         <>
                             <StatCard title="Gross Revenue" value={formatCurrency(financialSummary.grossRevenue, currency)} icon={<CurrencyIcon />} />
                             <StatCard title="Billetto Fees" value={formatCurrency(financialSummary.billettoFees, currency)} icon={<FeeIcon />} />
@@ -137,41 +146,55 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <>
                             <StatCard title="Total Tickets Sold" value={(totalTicketsSold || 0).toLocaleString()} icon={<TicketIcon />} />
                             <StatCard title="Status" value={event.state} icon={<CalendarIcon />} />
+                            <StatCard title="Available Tickets" value={event.availability?.available?.toLocaleString() ?? 'N/A'} icon={<TicketGroupIcon />} />
                         </>
                     )}
                 </div>
-
-                {/* Sales Velocity Chart */}
-                {salesVelocity && salesVelocity.length > 0 && (
-                     <div className="bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold text-white mb-4">Sales Velocity</h3>
-                        <SalesVelocityChart data={salesVelocity} />
-                    </div>
-                )}
                 
-                {/* Bottom row: Sales Channels & Ticket Types */}
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-                    {salesByChannel && salesByChannel.length > 0 && (
-                        <div className="lg:col-span-2 bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                            <h3 className="text-xl font-semibold text-white mb-4">Sales Channels</h3>
-                            <SalesChannelChart data={salesByChannel} />
+                {/* Charts and Tables with Skeleton Loading */}
+                {loading ? (
+                    <>
+                        <ChartSkeleton />
+                        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                            <ChartSkeleton className="lg:col-span-2" />
+                            <TableSkeleton className="lg:col-span-3" />
                         </div>
-                    )}
-                    {ticketGroups && ticketGroups.length > 0 && (
-                        <div className={`lg:col-span-${(salesByChannel && salesByChannel.length > 0) ? '3' : '5'} bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg`}>
-                            <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-                                <TicketGroupIcon />
-                                <span className="ml-2">Ticket Types</span>
-                            </h3>
-                            <TicketTypesTable 
-                                ticketGroups={ticketGroups} 
-                                currency={currency} 
-                                requestSort={requestTicketGroupSort}
-                                sortConfig={ticketGroupSortConfig}
-                            />
+                    </>
+                ) : (
+                    <>
+                        {/* Sales Velocity Chart */}
+                        {salesVelocity && salesVelocity.length > 0 && (
+                            <div className="bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                                <h3 className="text-xl font-semibold text-white mb-4">Sales Velocity</h3>
+                                <SalesVelocityChart data={salesVelocity} />
+                            </div>
+                        )}
+                        
+                        {/* Bottom row: Sales Channels & Ticket Types */}
+                        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                            {salesByChannel && salesByChannel.length > 0 && (
+                                <div className="lg:col-span-2 bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                                    <h3 className="text-xl font-semibold text-white mb-4">Sales Channels</h3>
+                                    <SalesChannelChart data={salesByChannel} />
+                                </div>
+                            )}
+                            {ticketGroups && ticketGroups.length > 0 && (
+                                <div className={`lg:col-span-${(salesByChannel && salesByChannel.length > 0) ? '3' : '5'} bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg`}>
+                                    <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
+                                        <TicketGroupIcon />
+                                        <span className="ml-2">Ticket Types</span>
+                                    </h3>
+                                    <TicketTypesTable 
+                                        ticketGroups={ticketGroups} 
+                                        currency={currency} 
+                                        requestSort={requestTicketGroupSort}
+                                        sortConfig={ticketGroupSortConfig}
+                                    />
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
+                    </>
+                )}
             </div>
         )}
 

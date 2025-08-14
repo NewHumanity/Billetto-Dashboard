@@ -57,9 +57,10 @@ This diagram shows how the main API objects relate to each other.
 This section explains how key dashboard metrics are derived from raw API data. This logic lives within the application and is not available directly from the API.
 
 - **Financial Summary (Gross Revenue, Fees, Net Payout)**
-    - `Gross Revenue`: Calculated by summing the `revenue` of all `TicketType` objects for an event. The `revenue` for a single ticket type is `price * sold_count`.
-    - `Billetto Fees`: Calculated by fetching all `LedgerEntry` objects for an event and summing the `amount` of all entries where `type` is `fee` or `charge`. The result is then made positive (`Math.abs()`).
-    - `Net Payout`: `Gross Revenue + Billetto Fees` (since fees are negative).
+    - This data is derived from the event's `LedgerEntry` list, which provides the most accurate financial source of truth.
+    - `Gross Revenue`: The sum of `amount` from all `LedgerEntry` items where `type` is `charge`. This represents the total money paid by customers.
+    - `Billetto Fees`: The sum of `amount` from all `LedgerEntry` items where `type` is `fee`. This value is negative. The dashboard displays its absolute value.
+    - `Net Payout`: The sum of `Gross Revenue` and all negative entries (like `fee` and `refund`). It reflects the final amount transferred to the organizer. It can also be verified against `payout` type ledger entries.
 
 - **Sales Velocity Chart**
     - Fetches all `Order` objects for an event.

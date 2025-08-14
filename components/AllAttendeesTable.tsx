@@ -60,7 +60,7 @@ const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSele
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-700">
+      <table className="min-w-full responsive-table">
         <thead className="bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Name" sortKey="name" />
@@ -70,25 +70,25 @@ const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSele
             <SortableHeader title="Date" sortKey="created_at" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
           {attendees.map((attendee) => (
             <tr 
               key={attendee.id} 
-              className="hover:bg-slate-700/50 transition-colors duration-200 cursor-pointer"
+              className="md:hover:bg-slate-700/50 transition-colors duration-200 cursor-pointer"
               onClick={() => onSelectAttendee(attendee.id)}
               tabIndex={0}
               onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectAttendee(attendee.id)}
               aria-label={`View details for attendee ${attendee.name}`}
             >
-              <td className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{attendee.name}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{attendee.email}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{attendee.event?.name || 'N/A'}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">
+              <td data-label="Name" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{attendee.name}</td>
+              <td data-label="Email" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{attendee.email}</td>
+              <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{attendee.event?.name || 'N/A'}</td>
+              <td data-label="Status" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColorMap[attendee.state] || statusColorMap.default}`}>
                     {(attendee.state || '').replace(/_/g, ' ')}
                 </span>
               </td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(attendee.created_at)}</td>
+              <td data-label="Date" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(attendee.created_at)}</td>
             </tr>
           ))}
         </tbody>

@@ -56,7 +56,7 @@ const TargetGroupsTable: React.FC<TargetGroupsTableProps> = ({ groups, onSelectG
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-700">
+      <table className="min-w-full responsive-table">
         <thead className="bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Name" sortKey="name" />
@@ -64,7 +64,7 @@ const TargetGroupsTable: React.FC<TargetGroupsTableProps> = ({ groups, onSelectG
             <SortableHeader title="Created" sortKey="created_at" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
           {groups.map((group) => (
             <tr
               key={group.id}
@@ -76,14 +76,14 @@ const TargetGroupsTable: React.FC<TargetGroupsTableProps> = ({ groups, onSelectG
               className={`transition-colors duration-200 cursor-pointer ${
                 selectedGroupId === group.id
                   ? 'bg-brand-primary/20'
-                  : 'hover:bg-slate-700/50'
+                  : 'md:hover:bg-slate-700/50'
               }`}
             >
-              <td className={`whitespace-nowrap py-4 px-4 text-sm font-semibold ${selectedGroupId === group.id ? 'text-brand-primary' : 'text-white'}`}>
+              <td data-label="Name" className={`whitespace-nowrap py-4 px-4 text-sm font-semibold ${selectedGroupId === group.id ? 'text-brand-primary' : 'text-white'}`}>
                 {group.name}
               </td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{(group.members_count || 0).toLocaleString()}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(group.created_at)}</td>
+              <td data-label="Members" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{(group.members_count || 0).toLocaleString()}</td>
+              <td data-label="Created" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(group.created_at)}</td>
             </tr>
           ))}
         </tbody>

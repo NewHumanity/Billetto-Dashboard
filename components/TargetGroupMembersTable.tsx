@@ -39,18 +39,18 @@ const TargetGroupMembersTable: React.FC<TargetGroupMembersTableProps> = ({ membe
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-700">
+      <table className="min-w-full responsive-table">
         <thead className="bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Name" sortKey="name" />
             <SortableHeader title="Email" sortKey="email" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
           {members.map((member) => (
-            <tr key={member.id} className="hover:bg-slate-700/50 transition-colors">
-              <td className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{member.name}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{member.email}</td>
+            <tr key={member.id} className="md:hover:bg-slate-700/50 transition-colors">
+              <td data-label="Name" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{member.name}</td>
+              <td data-label="Email" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{member.email}</td>
             </tr>
           ))}
         </tbody>

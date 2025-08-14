@@ -4,6 +4,16 @@
   "description": "A dashboard to visualize your Billetto event statistics, including revenue, tickets sold, and event performance.",
   "icons": [
     {
+      "src": "https://www.billetto.se/images/icons/apple-touch-icon-72x72.png",
+      "type": "image/png",
+      "sizes": "72x72"
+    },
+    {
+      "src": "https://www.billetto.se/images/icons/apple-touch-icon-96x96.png",
+      "type": "image/png",
+      "sizes": "96x96"
+    },
+    {
       "src": "https://www.billetto.se/images/icons/apple-touch-icon-144x144.png",
       "type": "image/png",
       "sizes": "144x144"
@@ -17,10 +27,18 @@
       "src": "https://www.billetto.se/images/icons/apple-touch-icon-512x512.png",
       "type": "image/png",
       "sizes": "512x512"
+    },
+    {
+      "src": "https://www.billetto.se/images/icons/apple-touch-icon-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
     }
   ],
   "start_url": ".",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "theme_color": "#1E293B",
   "background_color": "#0F172A"
 }

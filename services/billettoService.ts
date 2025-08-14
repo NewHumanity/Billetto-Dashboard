@@ -2,7 +2,7 @@
 import { BillettoEvent, ListResponse, Attendee, Order, LedgerEntry, Campaign, TicketGroup, TargetGroup, TargetGroupMember } from '../types';
 
 // Switching to a more reliable proxy to handle fetch errors.
-const CORS_PROXY_URL = 'https://proxy.cors.sh/';
+const CORS_PROXY_URL = 'https://corsproxy.io/?';
 const BILLETTO_API_BASE = 'https://billetto.dk/api/v3/organiser';
 const REQUEST_TIMEOUT = 15000; // 15 seconds
 

@@ -180,7 +180,7 @@ export type EventDetails = {
     ticketGroups: TicketGroup[];
     stats: {
         totalTicketsSold: number;
-        totalRevenue: number; // This is gross revenue from tickets
+        totalRevenue: number; // This is gross revenue from tickets, in cents
         currency: string;
     };
     // New optional fields for combined data

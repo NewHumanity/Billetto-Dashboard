@@ -82,7 +82,7 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-700">
+      <table className="min-w-full responsive-table">
         <thead className="bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Name / Event" sortKey="name" className="w-1/4" />
@@ -93,38 +93,38 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
             <SortableHeader title="Validity" sortKey="valid_from" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
           {campaigns.map((campaign) => {
             const isClickable = campaign.usage_count > 0;
             return (
                 <tr 
                     key={campaign.id} 
-                    className={`group hover:bg-slate-700/50 transition-colors ${isClickable ? 'cursor-pointer' : ''}`}
+                    className={`group md:hover:bg-slate-700/50 transition-colors ${isClickable ? 'cursor-pointer' : ''}`}
                     onClick={() => isClickable && onSelectCampaign(campaign.id)}
                     onKeyPress={(e) => isClickable && (e.key === 'Enter' || e.key === ' ') && onSelectCampaign(campaign.id)}
                     tabIndex={isClickable ? 0 : -1}
                     aria-label={isClickable ? `View orders for campaign ${campaign.name}` : undefined}
                 >
-                    <td className="py-4 px-4">
+                    <td data-label="Campaign" className="py-4 px-4">
                         <p className="font-semibold text-white truncate">{campaign.name}</p>
                         <p className="text-xs text-slate-400 truncate">{campaign.event?.name || 'Global Campaign'}</p>
                     </td>
-                    <td className="whitespace-nowrap py-4 px-4 text-sm">
+                    <td data-label="State" className="whitespace-nowrap py-4 px-4 text-sm">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${stateColorMap[campaign.state] || ''}`}>
                             {campaign.state}
                         </span>
                     </td>
-                    <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 capitalize">{(campaign.type || '').replace('_', ' ')}</td>
-                    <td className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-white">{formatDiscount(campaign)}</td>
-                    <td className="py-4 px-4 text-sm text-slate-300">
+                    <td data-label="Type" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 capitalize">{(campaign.type || '').replace('_', ' ')}</td>
+                    <td data-label="Discount" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-white">{formatDiscount(campaign)}</td>
+                    <td data-label="Usage" className="py-4 px-4 text-sm text-slate-300">
                         <div className="flex items-center gap-4">
                             <UsageProgress count={campaign.usage_count} limit={campaign.usage_limit} />
                             {isClickable && (
-                                <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/80 opacity-0 group-hover:opacity-100 transition-opacity">[Details]</span>
+                                <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/80 md:opacity-0 md:group-hover:opacity-100 transition-opacity">[Details]</span>
                             )}
                         </div>
                     </td>
-                    <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDateRange(campaign.valid_from, campaign.valid_to)}</td>
+                    <td data-label="Validity" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDateRange(campaign.valid_from, campaign.valid_to)}</td>
                 </tr>
           )})}
         </tbody>

@@ -57,7 +57,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({ orders, onSelectOrder, reques
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-700">
+      <table className="min-w-full responsive-table">
         <thead className="bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Order ID" sortKey="id" />
@@ -67,21 +67,21 @@ const OrdersTable: React.FC<OrdersTableProps> = ({ orders, onSelectOrder, reques
             <SortableHeader title="Total Payout" sortKey="payout" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
           {orders.map((order) => (
             <tr 
               key={order.id} 
-              className="hover:bg-slate-700/50 transition-colors duration-200 cursor-pointer"
+              className="md:hover:bg-slate-700/50 transition-colors duration-200 cursor-pointer"
               onClick={() => onSelectOrder(order.id)}
               tabIndex={0}
               onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectOrder(order.id)}
               aria-label={`View details for order ${order.id}`}
             >
-              <td className="whitespace-nowrap py-4 px-4 text-sm font-mono text-brand-primary/80 hover:text-brand-primary">{order.id.split('-')[0]}...</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(order.created_at)}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{order.buyer_name}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{order.event?.name || 'N/A'}</td>
-              <td className="whitespace-nowrap py-4 px-4 text-sm text-slate-100 font-semibold">{formatCurrency(order.payout, order.currency)}</td>
+              <td data-label="Order ID" className="whitespace-nowrap py-4 px-4 text-sm font-mono text-brand-primary/80 hover:text-brand-primary">{order.id.split('-')[0]}...</td>
+              <td data-label="Date" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(order.created_at)}</td>
+              <td data-label="Buyer" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{order.buyer_name}</td>
+              <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{order.event?.name || 'N/A'}</td>
+              <td data-label="Total Payout" className="whitespace-nowrap py-4 px-4 text-sm text-slate-100 font-semibold">{formatCurrency(order.payout, order.currency)}</td>
             </tr>
           ))}
         </tbody>

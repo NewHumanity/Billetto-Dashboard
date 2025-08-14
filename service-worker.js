@@ -1,11 +1,13 @@
 
-const CACHE_NAME = 'billetto-stats-v2'; // Bump cache version
+const CACHE_NAME = 'billetto-stats-v3';
 const urlsToCache = [
   '/',
   '/index.html',
+  '/manifest.json',
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -16,35 +18,31 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Do not cache API requests made through the CORS proxy
-  if (event.request.url.includes('proxy.cors.sh')) {
+  // Always go to network for the proxy.
+  if (event.request.url.includes('corsproxy.io')) {
     return event.respondWith(fetch(event.request));
   }
-
+  
+  // Stale-while-revalidate for everything else
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        if (response) {
-          return response; // Cache hit
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, networkResponse.clone());
+          });
         }
-
-        const fetchRequest = event.request.clone();
-        return fetch(fetchRequest).then(
-          (response) => {
-            if (!response || response.status !== 200 || (response.type !== 'basic' && response.type !== 'cors')) {
-              return response;
-            }
-            
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return response;
+        return networkResponse;
+      }).catch(err => {
+          // If fetch fails (e.g., offline), return the cached response if it exists
+          if (cachedResponse) {
+            return cachedResponse;
           }
-        );
-      })
+          console.warn('ServiceWorker: fetch failed and no cache hit for', event.request.url, err);
+      });
+      // Return cached response immediately if available, and fetch in background
+      return cachedResponse || fetchPromise;
+    })
   );
 });
 

@@ -23,6 +23,30 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
     const [loadingAnalysis, setLoadingAnalysis] = useState(false);
     const [filterTicketGroupId, setFilterTicketGroupId] = useState<string>('all');
 
+    const handleSelectEvent = useCallback((eventId: string | null) => {
+        if (eventId !== selectedEventId) {
+            setEventDetails(null); // Clear completely first to reset sub-views
+            setSelectedEventId(eventId);
+            if (eventId) {
+                const event = events.find(e => e.id === eventId);
+                if (event) {
+                    // Set a minimal "skeleton" details object immediately for a better UX
+                    const minimalDetails: EventDetails = {
+                        event,
+                        attendees: [],
+                        ticketGroups: [],
+                        stats: {
+                            totalTicketsSold: 0,
+                            totalRevenue: 0,
+                            currency: event.currency || 'USD',
+                        },
+                    };
+                    setEventDetails(minimalDetails);
+                }
+            }
+        }
+    }, [selectedEventId, events]);
+
     const fetchAndCacheEvents = useCallback(async () => {
         if (!apiClient) return;
         setLoadingEvents(true);
@@ -139,9 +163,34 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
                     return { ...tg, revenue: price * sold };
                 });
 
-                const grossRevenue = ticketGroupsWithCalculatedRevenue.reduce((sum, tg) => sum + (tg.revenue || 0), 0);
-                const billettoFees = allLedgerEntries.filter(e => e.type === 'fee' || e.type === 'charge').reduce((s, e) => s + e.amount, 0);
-                const netPayout = grossRevenue + billettoFees;
+                // Correct Financial Calculation using Ledger Entries as the source of truth
+                const grossRevenue = allLedgerEntries
+                    .filter(e => e.type === 'charge')
+                    .reduce((sum, e) => sum + e.amount, 0);
+
+                const billettoFees = allLedgerEntries
+                    .filter(e => e.type === 'fee')
+                    .reduce((sum, e) => sum + e.amount, 0);
+                
+                const refunds = allLedgerEntries
+                    .filter(e => e.type === 'refund')
+                    .reduce((sum, e) => sum + e.amount, 0);
+
+                const adjustments = allLedgerEntries
+                    .filter(e => e.type === 'adjustment')
+                    .reduce((sum, e) => sum + e.amount, 0);
+
+                const payoutEntries = allLedgerEntries.filter(e => e.type === 'payout');
+                
+                let netPayout;
+                if (payoutEntries.length > 0) {
+                    // Use actual payout entries if they exist; their amounts are negative.
+                    netPayout = Math.abs(payoutEntries.reduce((sum, e) => sum + e.amount, 0));
+                } else {
+                    // Otherwise, calculate the expected net payout.
+                    // Fees and refunds are negative, so addition is correct.
+                    netPayout = grossRevenue + billettoFees + refunds + adjustments;
+                }
 
                 const salesByChannel = allOrders.reduce((acc, order) => {
                     const channel = order.sales_channel.replace('_', ' ') || 'Unknown';
@@ -161,7 +210,7 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
                     event,
                     attendees: attendeesResponse.data,
                     ticketGroups: ticketGroupsWithCalculatedRevenue,
-                    stats: { totalTicketsSold: allAttendees.length, totalRevenue: grossRevenue / 100, currency: event.currency },
+                    stats: { totalTicketsSold: allAttendees.length, totalRevenue: grossRevenue, currency: event.currency },
                     financialSummary: { grossRevenue, billettoFees: Math.abs(billettoFees), netPayout },
                     salesByChannel: Object.values(salesByChannel),
                     salesVelocity: Object.values(salesVelocity).sort((a,b) => a.date.localeCompare(b.date)),
@@ -238,7 +287,7 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
 
     return {
         events, loadingEvents, eventsError, lastUpdatedEvents, fetchAndCacheEvents,
-        filteredEvents, eventFilter, setEventFilter, selectedEventId, setSelectedEventId,
+        filteredEvents, eventFilter, setEventFilter, selectedEventId, setSelectedEventId: handleSelectEvent,
         finalEventDetails, loadingDetails, detailsError,
         eventDetailView, setEventDetailView, attendeePage, setAttendeePage,
         requestEventAttendeesSort, eventAttendeesSortConfig,

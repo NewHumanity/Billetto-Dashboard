@@ -86,25 +86,44 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
                     {renderEventContent()}
                 </div>
                 <div className="md:col-span-2 lg:col-span-3">
-                    {!selectedEventId && <div className="flex items-center justify-center h-full rounded-xl bg-slate-800/50 border-2 border-dashed border-slate-700"><p className="text-slate-400">Select an event to view its statistics.</p></div>}
-                    {loadingDetails && !finalEventDetails && <Loader message="Combining and analyzing event data..." />}
-                    {detailsError && <ErrorMessage message={detailsError} />}
-                    {finalEventDetails && <Dashboard 
-                        details={finalEventDetails} 
-                        attendeePage={attendeePage} 
-                        onAttendeePageChange={setAttendeePage} 
-                        attendeesPerPage={ATTENDEES_PER_PAGE}
-                        activeSubView={eventDetailView}
-                        onSetSubView={setEventDetailView}
-                        requestAttendeeSort={requestEventAttendeesSort}
-                        attendeeSortConfig={eventAttendeesSortConfig}
-                        requestTicketGroupSort={requestTicketGroupsSort}
-                        ticketGroupSortConfig={ticketGroupsSortConfig}
-                        loadingAnalysis={loadingAnalysis}
-                        onTriggerAnalysis={triggerAnalysis}
-                        filterTicketGroupId={filterTicketGroupId}
-                        onFilterChange={setFilterTicketGroupId}
-                    />}
+                    {(() => {
+                        if (!selectedEventId) {
+                            return (
+                                <div className="flex items-center justify-center h-full rounded-xl bg-slate-800/50 border-2 border-dashed border-slate-700">
+                                    <p className="text-slate-400">Select an event to view its statistics.</p>
+                                </div>
+                            );
+                        }
+
+                        if (detailsError) {
+                            return <ErrorMessage message={detailsError} />;
+                        }
+
+                        if (finalEventDetails) {
+                            return (
+                                <Dashboard 
+                                    details={finalEventDetails} 
+                                    loading={loadingDetails}
+                                    attendeePage={attendeePage} 
+                                    onAttendeePageChange={setAttendeePage} 
+                                    attendeesPerPage={ATTENDEES_PER_PAGE}
+                                    activeSubView={eventDetailView}
+                                    onSetSubView={setEventDetailView}
+                                    requestAttendeeSort={requestEventAttendeesSort}
+                                    attendeeSortConfig={eventAttendeesSortConfig}
+                                    requestTicketGroupSort={requestTicketGroupsSort}
+                                    ticketGroupSortConfig={ticketGroupsSortConfig}
+                                    loadingAnalysis={loadingAnalysis}
+                                    onTriggerAnalysis={triggerAnalysis}
+                                    filterTicketGroupId={filterTicketGroupId}
+                                    onFilterChange={setFilterTicketGroupId}
+                                />
+                            );
+                        }
+                        
+                        // This case handles the brief moment an event is selected but the minimal 'finalEventDetails' object hasn't been created yet.
+                        return <Loader message="Preparing dashboard..." />;
+                    })()}
                 </div>
             </div>
         </div>

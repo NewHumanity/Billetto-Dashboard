@@ -47,9 +47,10 @@ const App: React.FC = () => {
         ? 'bg-brand-primary/20 text-brand-primary' 
         : 'text-slate-400 hover:bg-slate-700 hover:text-white'
       }`}
+      aria-label={label}
     >
       <div className="w-6 h-6">{icon}</div>
-      <span className="mt-1 md:mt-0 md:ml-3 text-sm font-semibold">{label}</span>
+      <span className="mt-1 md:mt-0 md:ml-3 text-xs md:text-sm font-semibold">{label}</span>
     </button>
   );
 
@@ -69,40 +70,47 @@ const App: React.FC = () => {
       default: return <DashboardView key={viewKey} apiClient={apiClient} />;
     }
   };
+  
+  const navigationContent = (
+    <>
+      <NavButton view="dashboard" label="Dashboard" icon={<CalendarIcon />} />
+      <NavButton view="orders" label="Orders" icon={<TicketIcon />} />
+      <NavButton view="ledger" label="Ledger" icon={<LedgerIcon />} />
+      <NavButton view="campaigns" label="Campaigns" icon={<CampaignIcon />} />
+      <NavButton view="targetGroups" label="Target Groups" icon={<TargetGroupIcon />} />
+      <NavButton view="attendees" label="Attendees" icon={<UserIcon />} />
+    </>
+  );
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans">
       {showSettings && <SettingsForm initialApiKey={apiKey} initialUseProxy={useProxy} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />}
       
-      <div className="flex flex-col md:flex-row">
-        {/* Sidebar Navigation */}
-        <aside className="bg-slate-800 md:w-56 p-2 md:p-4 md:min-h-screen flex md:flex-col justify-around md:justify-start">
-          <div className="text-white text-2xl font-bold mb-8 hidden md:block">
-            Billetto<span className="text-brand-primary">Stats</span>
-          </div>
-          <nav className="flex md:flex-col w-full justify-around md:justify-start gap-2">
-            <NavButton view="dashboard" label="Dashboard" icon={<CalendarIcon />} />
-            <NavButton view="orders" label="Orders" icon={<TicketIcon />} />
-            <NavButton view="ledger" label="Ledger" icon={<LedgerIcon />} />
-            <NavButton view="campaigns" label="Campaigns" icon={<CampaignIcon />} />
-            <NavButton view="targetGroups" label="Target Groups" icon={<TargetGroupIcon />} />
-            <NavButton view="attendees" label="Attendees" icon={<UserIcon />} />
-          </nav>
-          <div className="md:mt-auto">
-            <button
-                onClick={() => setShowSettings(true)}
-                className="flex flex-col md:flex-row items-center justify-center md:justify-start w-full text-left p-3 rounded-lg transition-colors duration-200 text-slate-400 hover:bg-slate-700 hover:text-white"
-            >
-                <div className="w-6 h-6"><SettingsIcon /></div>
-                <span className="mt-1 md:mt-0 md:ml-3 text-sm font-semibold">Settings</span>
-            </button>
-          </div>
+      <div className="flex">
+        {/* --- Desktop Sidebar --- */}
+        <aside className="hidden md:flex flex-col w-60 bg-slate-800 p-4 min-h-screen fixed">
+            <div className="text-white text-2xl font-bold mb-8">
+                Billetto<span className="text-brand-primary">Stats</span>
+            </div>
+            <nav className="flex flex-col gap-2">
+                {navigationContent}
+            </nav>
+            <div className="mt-auto">
+                <button
+                    onClick={() => setShowSettings(true)}
+                    className="flex flex-row items-center justify-start w-full text-left p-3 rounded-lg transition-colors duration-200 text-slate-400 hover:bg-slate-700 hover:text-white"
+                    aria-label="Settings"
+                >
+                    <div className="w-6 h-6"><SettingsIcon /></div>
+                    <span className="ml-3 text-sm font-semibold">Settings</span>
+                </button>
+            </div>
         </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        {/* --- Main Content --- */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 md:ml-60 pb-24 md:pb-8">
             {apiKey ? renderContent() : (
-                 <div className="flex items-center justify-center h-full rounded-xl bg-slate-800/50 border-2 border-dashed border-slate-700 p-8">
+                 <div className="flex items-center justify-center h-[calc(100vh-10rem)] rounded-xl bg-slate-800/50 border-2 border-dashed border-slate-700 p-8">
                     <div className="text-center">
                         <h2 className="text-2xl font-semibold text-white">Welcome to BillettoStats</h2>
                         <p className="mt-2 text-slate-400">Please open settings and enter your API Keypair to get started.</p>
@@ -117,6 +125,21 @@ const App: React.FC = () => {
             )}
         </main>
       </div>
+
+      {/* --- Mobile Bottom Navigation --- */}
+      {apiKey && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-800/80 backdrop-blur-lg border-t border-slate-700 p-1 flex justify-around items-center z-40">
+          {navigationContent}
+          <button
+              onClick={() => setShowSettings(true)}
+              className="flex flex-col items-center justify-center w-full text-left p-3 rounded-lg transition-colors duration-200 text-slate-400 hover:bg-slate-700 hover:text-white"
+              aria-label="Settings"
+          >
+              <div className="w-6 h-6"><SettingsIcon /></div>
+              <span className="mt-1 text-xs font-semibold">Settings</span>
+          </button>
+        </nav>
+      )}
     </div>
   );
 };

@@ -20,8 +20,21 @@ const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, initialUsePr
     setIsSaving(false);
   };
 
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+        document.body.style.overflow = 'unset';
+    };
+  }, []);
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+        onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" aria-modal="true" role="dialog">
+    <div onClick={handleBackdropClick} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" aria-modal="true" role="dialog">
         <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700 relative">
             <button
                 onClick={onClose}
