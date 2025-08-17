@@ -11,18 +11,19 @@ interface DashboardViewProps {
     apiClient: BillettoApiClient | null;
 }
 
-const ATTENDEES_PER_PAGE = 50;
+const ATTENDEES_PER_PAGE = 100;
 
 const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
     const {
         events, loadingEvents, eventsError, lastUpdatedEvents, fetchAndCacheEvents,
-        filteredEvents, eventFilter, setEventFilter, selectedEventId, setSelectedEventId,
+        filteredEventListItems, eventFilter, setEventFilter, selectedItem, setSelectedItem,
         finalEventDetails, loadingDetails, detailsError,
         eventDetailView, setEventDetailView, attendeePage, setAttendeePage,
         requestEventAttendeesSort, eventAttendeesSortConfig,
         requestTicketGroupsSort, ticketGroupsSortConfig,
         loadingAnalysis, triggerAnalysis,
-        filterTicketGroupId, setFilterTicketGroupId
+        filterTicketGroupId, setFilterTicketGroupId,
+        loadingProgress
     } = useEvents(apiClient);
 
     const filterOptions = ['published', 'draft', 'completed', 'canceled', 'all'];
@@ -45,21 +46,89 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
         if (events.length === 0 && !loadingEvents) {
           return <ErrorMessage message="No events found for this account. Click 'Refresh Data' to try again." />;
         }
-        if (filteredEvents.length === 0) {
+        if (filteredEventListItems.length === 0) {
           return <ErrorMessage message={`No ${eventFilter} events found. Try another filter.`} />;
         }
         return (
           <ul className="space-y-3">
-            {filteredEvents.map(event => (
+            {filteredEventListItems.map(item => (
               <EventListItem
-                key={event.id}
-                event={event}
-                isSelected={selectedEventId === event.id}
-                onSelect={() => setSelectedEventId(event.id)}
+                key={item.id}
+                item={item}
+                isSelected={selectedItem?.id === item.id}
+                onSelect={setSelectedItem}
               />
             ))}
           </ul>
         );
+    };
+
+    const renderDashboardContent = () => {
+      if (!selectedItem) {
+        return (
+          <div className="flex items-center justify-center h-full rounded-xl bg-slate-800/50 border-2 border-dashed border-slate-700">
+            <p className="text-slate-400">Select an event to view its statistics.</p>
+          </div>
+        );
+      }
+      if (detailsError) {
+        return <ErrorMessage message={detailsError} />;
+      }
+      
+      const isInitialLoad = loadingDetails && (!finalEventDetails || !finalEventDetails.allAttendees);
+      if (isInitialLoad) {
+        let message = "Fetching event data...";
+        let overallProgress: number | undefined = undefined;
+
+        if (loadingProgress?.message) {
+            message = loadingProgress.message;
+        }
+        else if (typeof loadingProgress?.orders !== 'undefined' && typeof loadingProgress?.attendees !== 'undefined' && typeof loadingProgress?.ledger !== 'undefined') {
+            const { orders, attendees, ledger } = loadingProgress;
+            const fetchingContribution = ((orders + attendees + ledger) / 300) * 95;
+            overallProgress = Math.floor(fetchingContribution);
+            const fetchingComplete = orders === 100 && attendees === 100 && ledger === 100;
+
+            if (fetchingComplete) {
+                message = "Finalizing and caching data...";
+                overallProgress = 99;
+            } else {
+                const messages = [];
+                if (orders < 100) messages.push('orders');
+                if (attendees < 100) messages.push('attendees');
+                if (ledger < 100) messages.push('financials');
+                if (messages.length > 0) message = `Fetching all ${messages.join(', ')}...`;
+            }
+        } else {
+            message = "Preparing to fetch details...";
+        }
+        
+        return <Loader message={message} progress={overallProgress} />;
+      }
+      
+      if (finalEventDetails) {
+        return (
+            <Dashboard 
+                details={finalEventDetails} 
+                loading={loadingDetails}
+                attendeePage={attendeePage} 
+                onAttendeePageChange={setAttendeePage} 
+                attendeesPerPage={ATTENDEES_PER_PAGE}
+                activeSubView={eventDetailView}
+                onSetSubView={setEventDetailView}
+                requestAttendeeSort={requestEventAttendeesSort}
+                attendeeSortConfig={eventAttendeesSortConfig}
+                requestTicketGroupSort={requestTicketGroupsSort}
+                ticketGroupSortConfig={ticketGroupsSortConfig}
+                loadingAnalysis={loadingAnalysis}
+                onTriggerAnalysis={triggerAnalysis}
+                filterTicketGroupId={filterTicketGroupId}
+                onFilterChange={setFilterTicketGroupId}
+            />
+        );
+      }
+      
+      return <Loader message="Preparing dashboard..." />;
     };
 
     return (
@@ -86,44 +155,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
                     {renderEventContent()}
                 </div>
                 <div className="md:col-span-2 lg:col-span-3">
-                    {(() => {
-                        if (!selectedEventId) {
-                            return (
-                                <div className="flex items-center justify-center h-full rounded-xl bg-slate-800/50 border-2 border-dashed border-slate-700">
-                                    <p className="text-slate-400">Select an event to view its statistics.</p>
-                                </div>
-                            );
-                        }
-
-                        if (detailsError) {
-                            return <ErrorMessage message={detailsError} />;
-                        }
-
-                        if (finalEventDetails) {
-                            return (
-                                <Dashboard 
-                                    details={finalEventDetails} 
-                                    loading={loadingDetails}
-                                    attendeePage={attendeePage} 
-                                    onAttendeePageChange={setAttendeePage} 
-                                    attendeesPerPage={ATTENDEES_PER_PAGE}
-                                    activeSubView={eventDetailView}
-                                    onSetSubView={setEventDetailView}
-                                    requestAttendeeSort={requestEventAttendeesSort}
-                                    attendeeSortConfig={eventAttendeesSortConfig}
-                                    requestTicketGroupSort={requestTicketGroupsSort}
-                                    ticketGroupSortConfig={ticketGroupsSortConfig}
-                                    loadingAnalysis={loadingAnalysis}
-                                    onTriggerAnalysis={triggerAnalysis}
-                                    filterTicketGroupId={filterTicketGroupId}
-                                    onFilterChange={setFilterTicketGroupId}
-                                />
-                            );
-                        }
-                        
-                        // This case handles the brief moment an event is selected but the minimal 'finalEventDetails' object hasn't been created yet.
-                        return <Loader message="Preparing dashboard..." />;
-                    })()}
+                    {renderDashboardContent()}
                 </div>
             </div>
         </div>

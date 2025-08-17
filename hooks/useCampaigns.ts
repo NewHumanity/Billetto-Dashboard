@@ -5,8 +5,8 @@ import { BillettoApiClient, BillettoApiError } from '../services/billettoService
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
 
-const CAMPAIGNS_PER_PAGE = 20;
-const CAMPAIGN_ORDERS_PER_PAGE = 10;
+const CAMPAIGNS_PER_PAGE = 100;
+const CAMPAIGN_ORDERS_PER_PAGE = 100;
 
 export const useCampaigns = (apiClient: BillettoApiClient | null) => {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);

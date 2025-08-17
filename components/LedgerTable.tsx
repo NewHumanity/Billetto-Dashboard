@@ -1,6 +1,5 @@
 
 
-
 import React from 'react';
 import { LedgerEntry, SortConfig } from '../types';
 
@@ -42,12 +41,21 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
   };
   
   const typeColorMap: { [key: string]: string } = {
-    charge: 'text-green-400',
-    refund: 'text-yellow-400',
-    payout: 'text-blue-400',
-    fee: 'text-red-400',
-    adjustment: 'text-purple-400',
-    other: 'text-slate-400',
+    ORDER_REVENUE: 'text-green-400',
+    REFUND: 'text-yellow-400',
+    PAYOUT: 'text-blue-400',
+    IMMEDIATE_PAYOUT: 'text-blue-400',
+    IMMEDIATE_PAYOUT_WITHDRAWAL: 'text-blue-400',
+    ORGANIZER_PAYMENT_FEE: 'text-red-400',
+    TICKETS_FEE: 'text-red-400',
+    PROMOTION_FEE: 'text-red-400',
+    INVOICE_FEE: 'text-red-400',
+    CHARGEBACK: 'text-red-500 font-bold',
+    default: 'text-slate-400',
+  };
+
+  const formatEntryType = (type: string) => {
+    return type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
   };
 
   const SortableHeader: React.FC<{ title: string, sortKey: keyof LedgerEntry | string, className?: string }> = ({ title, sortKey, className = '' }) => {
@@ -72,9 +80,9 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
         <thead className="bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Date" sortKey="created_at" />
-            <SortableHeader title="Type" sortKey="type" />
-            <SortableHeader title="Description" sortKey="description" />
+            <SortableHeader title="Details" sortKey="entry_type" />
             <SortableHeader title="Event" sortKey="event.name" />
+            <SortableHeader title="VAT" sortKey="vat" className="text-right" />
             <SortableHeader title="Amount" sortKey="amount" className="text-right"/>
           </tr>
         </thead>
@@ -91,20 +99,23 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
                   aria-label={isClickable ? `View details for order related to this ledger entry` : undefined}
                 >
                     <td data-label="Date" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(entry.created_at)}</td>
-                    <td data-label="Type" className="whitespace-nowrap py-4 px-4 text-sm font-medium">
-                        <span className={`capitalize ${typeColorMap[entry.type] || typeColorMap.other}`}>
-                        {(entry.type || '').replace('_', ' ')}
-                        </span>
-                    </td>
-                    <td data-label="Description" className="py-4 px-4 text-sm text-white max-w-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate">{entry.description}</span>
-                        {isClickable && (
-                           <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/80 hover:text-brand-primary">[View Order]</span>
-                        )}
-                      </div>
+                    <td data-label="Details" className="py-4 px-4 text-sm font-medium">
+                        <div className="flex items-center justify-between gap-2">
+                           <div>
+                             <p className={`font-semibold ${typeColorMap[entry.entry_type] || typeColorMap.default}`}>
+                                {formatEntryType(entry.entry_type)}
+                             </p>
+                             {entry.entry_subtype && <p className="text-xs text-slate-400 capitalize">{entry.entry_subtype.replace(/_/g, ' ')}</p>}
+                           </div>
+                           {isClickable && (
+                              <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/80 hover:text-brand-primary">[View Order]</span>
+                           )}
+                        </div>
                     </td>
                     <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{entry.event?.name || 'N/A'}</td>
+                    <td data-label="VAT" className={`whitespace-nowrap py-4 px-4 text-sm font-semibold text-slate-400`}>
+                        {formatCurrency(entry.vat, entry.currency)}
+                    </td>
                     <td data-label="Amount" className={`whitespace-nowrap py-4 px-4 text-sm font-semibold ${entry.amount > 0 ? 'text-green-400' : entry.amount < 0 ? 'text-red-400' : 'text-slate-300'}`}>
                         {formatCurrency(entry.amount, entry.currency)}
                     </td>

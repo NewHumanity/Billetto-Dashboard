@@ -1,11 +1,12 @@
 
+
 import { useState, useCallback, useEffect } from 'react';
-import { LedgerEntry } from '../types';
+import { LedgerEntry, Order } from '../types';
 import { BillettoApiClient, BillettoApiError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
 
-const LEDGER_ENTRIES_PER_PAGE = 25;
+const LEDGER_ENTRIES_PER_PAGE = 100;
 
 export const useLedger = (apiClient: BillettoApiClient | null) => {
     const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
@@ -13,6 +14,8 @@ export const useLedger = (apiClient: BillettoApiClient | null) => {
     const [ledgerError, setLedgerError] = useState<string | null>(null);
     const [ledgerPagination, setLedgerPagination] = useState({ currentPage: 1, total: 0 });
     const [lastUpdatedLedger, setLastUpdatedLedger] = useState<Date | null>(null);
+    
+    // This state is just for triggering the modal. The modal logic itself is in LedgerView.
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
     const { items: sortedLedger, requestSort: requestLedgerSort, sortConfig: ledgerSortConfig } = useSortableData(ledgerEntries, { key: 'created_at', direction: 'descending' });

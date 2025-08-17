@@ -1,7 +1,9 @@
+
+
 import React from 'react';
-import WordCloud from 'react-wordcloud';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, LabelList } from 'recharts';
-import { EventDetails, BookingQuestionsAnalysis, AggregatedQuestion, BookingQuestionResponse } from '../types';
+import cloud from 'd3-cloud';
+import { EventDetails, BookingQuestionsAnalysis, AggregatedQuestion, BookingQuestionResponse, WordCloudData } from '../types';
+import SimpleBarChart from './EventsChart';
 
 interface BookingQuestionsAnalysisProps {
     details: EventDetails;
@@ -11,36 +13,96 @@ interface BookingQuestionsAnalysisProps {
     onFilterChange: (ticketGroupId: string) => void;
 }
 
-const CustomYAxisTick = (props: any) => {
-    const { x, y, payload } = props;
-    const { value } = payload;
-    const truncatedValue = value.length > 25 ? `${value.substring(0, 25)}...` : value;
+// Responsive wrapper for WordCloud using d3-cloud
+const ResponsiveWordCloud: React.FC<{data: WordCloudData[]}> = ({data}) => {
+    const containerRef = React.useRef<HTMLDivElement>(null);
+    const [words, setWords] = React.useState<cloud.Word[]>([]);
+    const [size, setSize] = React.useState<{width: number, height: number} | null>(null);
+
+    React.useLayoutEffect(() => {
+        if (containerRef.current) {
+            const observer = new ResizeObserver(entries => {
+                const entry = entries[0];
+                if (entry && entry.contentRect) {
+                    setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+                }
+            });
+            observer.observe(containerRef.current);
+            // Set initial size
+            setSize({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
+            return () => observer.disconnect();
+        }
+    }, []);
+
+    React.useEffect(() => {
+        if (!size || !size.width || data.length === 0) {
+            setWords([]);
+            return;
+        };
+        
+        const minVal = data.length > 0 ? data[data.length - 1].value : 0;
+        const maxVal = data.length > 0 ? data[0].value : 0;
+
+        const fontScale = (value: number) => {
+            if (maxVal === minVal) return 30; // middle of 14-60 range
+            const minSize = 14;
+            const maxSize = 60;
+            // Use a sqrt scale for better distribution of font sizes
+            const percent = (Math.sqrt(value) - Math.sqrt(minVal)) / (Math.sqrt(maxVal) - Math.sqrt(minVal));
+            return percent * (maxSize - minSize) + minSize;
+        };
+
+        const layout = cloud()
+            .size([size.width, size.height])
+            .words(data.map(d => ({ ...d, size: fontScale(d.value) })))
+            .padding(1)
+            .rotate((d) => (d as WordCloudData).value % 2 === 0 ? 0 : -90)
+            .font("sans-serif")
+            .fontWeight("bold")
+            .fontSize(d => d.size!)
+            .on("end", (newWords) => {
+                setWords(newWords);
+            });
+        
+        layout.start();
+
+        // Add a cleanup function to stop the layout calculation if the component unmounts.
+        return () => {
+            layout.stop();
+        };
+
+    }, [data, size]);
+
+    const colors = ["#1E90FF", "#38B2AC", "#9F7AEA", "#ED8936", "#F56565", "#4299E1"];
+    const fill = React.useCallback((d: cloud.Word, i: number) => colors[i % colors.length], []);
 
     return (
-        <g transform={`translate(${x},${y})`}>
-            <title>{value}</title>
-            <text x={0} y={0} dy={4} textAnchor="end" fill="#CBD5E0" fontSize={12}>
-                {truncatedValue}
-            </text>
-        </g>
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
+            {size && (
+                <svg width={size.width} height={size.height}>
+                    <g transform={`translate(${size.width / 2},${size.height / 2})`}>
+                        {words.map((word, i) => (
+                            <text
+                                key={word.text}
+                                textAnchor="middle"
+                                transform={`translate(${word.x}, ${word.y}) rotate(${word.rotate})`}
+                                style={{
+                                    fontFamily: 'sans-serif',
+                                    fontSize: word.size,
+                                    fontWeight: 'bold',
+                                    fill: fill(word, i),
+                                }}
+                            >
+                                {word.text}
+                            </text>
+                        ))}
+                    </g>
+                </svg>
+            )}
+        </div>
     );
 };
 
-const wordCloudOptions = {
-  colors: ["#1E90FF", "#38B2AC", "#9F7AEA", "#ED8936", "#F56565", "#4299E1"],
-  enableTooltip: true,
-  deterministic: true,
-  fontFamily: "sans-serif",
-  fontSizes: [14, 60] as [number, number],
-  fontStyle: "normal",
-  fontWeight: "bold",
-  padding: 1,
-  rotations: 2,
-  rotationAngles: [-90, 0] as [number, number],
-  scale: "sqrt" as const,
-  spiral: "archimedean" as const,
-  transitionDuration: 1000,
-};
 
 const BookingQuestionsAnalysis: React.FC<BookingQuestionsAnalysisProps> = ({ details, analysis, onTriggerAnalysis, filterTicketGroupId, onFilterChange }) => {
 
@@ -52,10 +114,21 @@ const BookingQuestionsAnalysis: React.FC<BookingQuestionsAnalysisProps> = ({ det
 
         const processResponses = (responses: BookingQuestionResponse[], name: string, email: string) => {
              for (const response of responses) {
-                if (response.question.id === question.id && response.text) {
-                    const uniqueKey = `${name}-${email}-${response.text}`;
+                const answerText = response.answer || response.text;
+                let responseMatches = false;
+
+                if (typeof response.question === 'string') {
+                    // In analysis, string question name is used as the unique ID
+                    responseMatches = response.question === question.id;
+                } else {
+                    // For expanded question objects, use the ID
+                    responseMatches = response.question.id === question.id;
+                }
+
+                if (responseMatches && answerText) {
+                    const uniqueKey = `${name}-${email}-${answerText}`;
                     if (!addedResponses.has(uniqueKey)) {
-                        rows.push([name, email, `"${response.text.replace(/"/g, '""')}"`]);
+                        rows.push([name, email, `"${answerText.replace(/"/g, '""')}"`]);
                         addedResponses.add(uniqueKey);
                     }
                 }
@@ -95,18 +168,6 @@ const BookingQuestionsAnalysis: React.FC<BookingQuestionsAnalysisProps> = ({ det
             </div>
         );
     }
-    
-    const CustomTooltipContent: React.FC<any> = ({ active, payload, label }) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className="p-3 bg-slate-700/80 backdrop-blur-sm border border-slate-600 rounded-lg shadow-lg">
-                    <p className="text-sm text-slate-200 mb-1">{label}</p>
-                    <p className="text-white font-semibold">{`Responses: ${payload[0].value.toLocaleString()}`}</p>
-                </div>
-            );
-        }
-        return null;
-    };
 
     return (
         <div className="space-y-8 animate-fade-in" role="tabpanel">
@@ -135,8 +196,6 @@ const BookingQuestionsAnalysis: React.FC<BookingQuestionsAnalysisProps> = ({ det
             </div>
 
             {analysis.map(question => {
-                const chartData = question.answers.slice(0, 10).reverse(); // Reverse for top-down display in chart
-                
                 return (
                     <div key={question.id} className="bg-slate-800 p-6 rounded-xl shadow-lg">
                         <div className="flex justify-between items-start gap-4 mb-1">
@@ -148,23 +207,20 @@ const BookingQuestionsAnalysis: React.FC<BookingQuestionsAnalysisProps> = ({ det
                         <p className="text-sm text-slate-400 mb-6">Total Responses: {question.totalResponses.toLocaleString()}</p>
                         
                         {question.type === 'multiple-choice' && (
-                            <div style={{ width: '100%', height: Math.max(80, chartData.length * 45) }}>
-                                <ResponsiveContainer>
-                                    <BarChart layout="vertical" data={chartData} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-                                        <XAxis type="number" stroke="#A0AEC0" tick={{ fontSize: 12 }} allowDecimals={false} />
-                                        <YAxis type="category" dataKey="text" stroke="#A0AEC0" width={180} tick={<CustomYAxisTick />} interval={0} />
-                                        <Tooltip cursor={{ fill: 'rgba(30, 144, 255, 0.1)' }} content={<CustomTooltipContent />} />
-                                        <Bar dataKey="count" fill="#1E90FF" radius={[0, 4, 4, 0]}>
-                                           <LabelList dataKey="count" position="right" style={{ fill: '#E2E8F0', fontSize: 12 }} />
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
+                             <div className="w-full">
+                                <SimpleBarChart 
+                                    data={question.answers}
+                                    maxBars={10}
+                                    sortBy="none"
+                                    colorScheme="gradient"
+                                    className="pr-4"
+                                />
                             </div>
                         )}
 
-                        {question.type === 'open-ended' && question.wordCloudData && (
+                        {question.type === 'open-ended' && question.wordCloudData && question.wordCloudData.length > 0 && (
                             <div style={{ width: '100%', height: 300 }}>
-                               <WordCloud words={question.wordCloudData} options={wordCloudOptions} />
+                               <ResponsiveWordCloud data={question.wordCloudData} />
                             </div>
                         )}
 

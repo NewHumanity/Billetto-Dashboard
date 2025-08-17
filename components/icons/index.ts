@@ -1,5 +1,4 @@
 
-
 export * from './CalendarIcon';
 export * from './CurrencyIcon';
 export * from './TicketIcon';
@@ -13,3 +12,14 @@ export * from './FeeIcon';
 export * from './NetPayoutIcon';
 export * from './ExternalLinkIcon';
 export * from './QuestionIcon';
+export * from './CopyIcon';
+export * from './CreditCardIcon';
+export * from './CheckCircleIcon';
+export * from './XCircleIcon';
+export * from './FilterIcon';
+export * from './CalculatorIcon';
+export * from './MarketingIcon';
+export * from './NewsletterIcon';
+export * from './GlobeIcon';
+export * from './MenuIcon';
+export * from './ChevronDownIcon';

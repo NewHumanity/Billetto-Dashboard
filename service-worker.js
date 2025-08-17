@@ -19,7 +19,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('fetch', (event) => {
   // Always go to network for the proxy.
-  if (event.request.url.includes('corsproxy.io')) {
+  if (event.request.url.includes('yogamela.org')) {
     return event.respondWith(fetch(event.request));
   }
   

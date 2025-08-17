@@ -2,7 +2,7 @@
 import { BillettoEvent, ListResponse, Attendee, Order, LedgerEntry, Campaign, TicketGroup, TargetGroup, TargetGroupMember } from '../types';
 
 // Switching to a more reliable proxy to handle fetch errors.
-const CORS_PROXY_URL = 'https://corsproxy.io/?';
+const CORS_PROXY_URL = 'https://yogamela.org/billetto-proxy.php';
 const BILLETTO_API_BASE = 'https://billetto.dk/api/v3/organiser';
 const REQUEST_TIMEOUT = 15000; // 15 seconds
 
@@ -53,8 +53,11 @@ export class BillettoApiClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const targetUrl = `${this.billettoApiBase}${endpoint}`;
-    const requestUrl = this.useProxy ? `${CORS_PROXY_URL}${targetUrl}` : targetUrl;
+    const isFullUrl = endpoint.startsWith('http');
+    const targetUrl = isFullUrl ? endpoint : `${this.billettoApiBase}${endpoint}`;
+    
+    // Correctly construct the proxy URL by appending the encoded target URL as a parameter
+    const requestUrl = this.useProxy ? `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}` : targetUrl;
 
     try {
       const response = await fetch(requestUrl, {
@@ -129,8 +132,13 @@ export class BillettoApiClient {
     return event && event.object === 'event' && typeof event.id === 'string';
   }
 
-  async getEvents(page = 1, perPage = 25): Promise<ListResponse<BillettoEvent>> {
-    const endpoint = `/events?page=${page}&per_page=${perPage}&sort=-starts_at`;
+  public async fetchListEndpoint<T>(endpoint: string): Promise<ListResponse<T>> {
+    const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
+    return this.parseListResponse<T>(response);
+  }
+
+  async getEvents(page = 1, limit = 100): Promise<ListResponse<BillettoEvent>> {
+    const endpoint = `/events?page=${page}&limit=${limit}&sort=-starts_at`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<BillettoEvent>(response);
   }
@@ -145,9 +153,9 @@ export class BillettoApiClient {
     throw new BillettoApiError('Invalid event data structure for single event', BillettoErrorType.VALIDATION, undefined, eventData);
   }
   
-  async getAttendees(page = 1, perPage = 25, expand: string[] = []): Promise<ListResponse<Attendee>> {
+  async getAttendees(page = 1, limit = 100, expand: string[] = []): Promise<ListResponse<Attendee>> {
     const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
-    const endpoint = `/attendees?page=${page}&per_page=${perPage}${expandQuery}&sort=-created_at`;
+    const endpoint = `/attendees?page=${page}&limit=${limit}${expandQuery}&sort=-created_at`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<Attendee>(response);
   }
@@ -163,22 +171,31 @@ export class BillettoApiClient {
     throw new BillettoApiError('Invalid attendee data structure', BillettoErrorType.VALIDATION, undefined, attendeeData);
   }
 
-  async getEventAttendees(eventId: string, page = 1, perPage = 100, expand: string[] = []): Promise<ListResponse<Attendee>> {
+  async getEventAttendees(eventId: string, page = 1, limit = 100, expand: string[] = []): Promise<ListResponse<Attendee>> {
     const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
-    const endpoint = `/events/${eventId}/attendees?page=${page}&per_page=${perPage}${expandQuery}`;
+    const endpoint = `/events/${eventId}/attendees?page=${page}&limit=${limit}${expandQuery}`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<Attendee>(response);
   }
   
-  async getEventTicketGroups(eventId: string, page = 1, perPage = 100): Promise<ListResponse<TicketGroup>> {
-    const endpoint = `/ticket_types?event=${eventId}&page=${page}&per_page=${perPage}`;
+  async getEventTicketGroups(eventId: string, page = 1, limit = 100): Promise<ListResponse<TicketGroup>> {
+    const endpoint = `/ticket_types?event=${eventId}&page=${page}&limit=${limit}`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<TicketGroup>(response);
   }
 
-  async getOrders(page = 1, perPage = 25, expand: string[] = []): Promise<ListResponse<Order>> {
+  async getOrders(page = 1, limit = 100, expand: string[] = [], filters: Record<string, string> = {}): Promise<ListResponse<Order>> {
     const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
-    const endpoint = `/orders?page=${page}&per_page=${perPage}${expandQuery}&sort=-created_at`;
+    
+    const filterParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+        if (value) { // Ensure value is not null, undefined, or empty string
+            filterParams.append(key, value);
+        }
+    }
+    const filterQuery = filterParams.toString();
+
+    const endpoint = `/orders?page=${page}&limit=${limit}${expandQuery}&sort=-created_at${filterQuery ? '&' + filterQuery : ''}`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<Order>(response);
   }
@@ -194,48 +211,48 @@ export class BillettoApiClient {
     throw new BillettoApiError('Invalid order data structure for single order', BillettoErrorType.VALIDATION, undefined, orderData);
   }
   
-  async getLedgerEntries(page = 1, perPage = 25, expand: string[] = []): Promise<ListResponse<LedgerEntry>> {
+  async getLedgerEntries(page = 1, limit = 100, expand: string[] = []): Promise<ListResponse<LedgerEntry>> {
     const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
-    const endpoint = `/ledger_entries?page=${page}&per_page=${perPage}${expandQuery}&sort=-created_at`;
+    const endpoint = `/ledger_entries?page=${page}&limit=${limit}${expandQuery}&sort=-created_at`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<LedgerEntry>(response);
   }
   
-  async getCampaigns(page = 1, perPage = 25, expand: string[] = []): Promise<ListResponse<Campaign>> {
+  async getCampaigns(page = 1, limit = 100, expand: string[] = []): Promise<ListResponse<Campaign>> {
     const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
-    const endpoint = `/campaigns?page=${page}&per_page=${perPage}${expandQuery}&sort=-created_at`;
+    const endpoint = `/campaigns?page=${page}&limit=${limit}${expandQuery}&sort=-created_at`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<Campaign>(response);
   }
 
-  async getCampaignOrders(campaignId: string, page = 1, perPage = 10, expand: string[] = []): Promise<ListResponse<Order>> {
+  async getCampaignOrders(campaignId: string, page = 1, limit = 100, expand: string[] = []): Promise<ListResponse<Order>> {
     const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
-    const endpoint = `/campaigns/${campaignId}/orders?page=${page}&per_page=${perPage}${expandQuery}&sort=-created_at`;
+    const endpoint = `/campaigns/${campaignId}/orders?page=${page}&limit=${limit}${expandQuery}&sort=-created_at`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<Order>(response);
   }
 
-  async getTargetGroups(page = 1, perPage = 25): Promise<ListResponse<TargetGroup>> {
-    const endpoint = `/target_groups?page=${page}&per_page=${perPage}&sort=-created_at`;
+  async getTargetGroups(page = 1, limit = 100): Promise<ListResponse<TargetGroup>> {
+    const endpoint = `/target_groups?page=${page}&limit=${limit}&sort=-created_at`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<TargetGroup>(response);
   }
 
-  async getTargetGroupMembers(groupId: string, page = 1, perPage = 50): Promise<ListResponse<TargetGroupMember>> {
-    const endpoint = `/target_groups/${groupId}/members?page=${page}&per_page=${perPage}`;
+  async getTargetGroupMembers(groupId: string, page = 1, limit = 100): Promise<ListResponse<TargetGroupMember>> {
+    const endpoint = `/target_groups/${groupId}/members?page=${page}&limit=${limit}`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<TargetGroupMember>(response);
   }
   
-  async getEventOrders(eventId: string, page = 1, perPage = 100, expand: string[] = []): Promise<ListResponse<Order>> {
+  async getEventOrders(eventId: string, page = 1, limit = 100, expand: string[] = []): Promise<ListResponse<Order>> {
     const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
-    const endpoint = `/orders?event=${eventId}&page=${page}&per_page=${perPage}&sort=created_at${expandQuery}`;
+    const endpoint = `/orders?event=${eventId}&page=${page}&limit=${limit}&sort=created_at${expandQuery}`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<Order>(response);
   }
 
-  async getEventLedgerEntries(eventId: string, page = 1, perPage = 100): Promise<ListResponse<LedgerEntry>> {
-    const endpoint = `/ledger_entries?event=${eventId}&page=${page}&per_page=${perPage}&sort=-created_at`;
+  async getEventLedgerEntries(eventId: string, page = 1, limit = 100): Promise<ListResponse<LedgerEntry>> {
+    const endpoint = `/ledger_entries?event=${eventId}&page=${page}&limit=${limit}&sort=-created_at`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<LedgerEntry>(response);
   }

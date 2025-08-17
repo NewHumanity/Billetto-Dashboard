@@ -40,6 +40,10 @@ The API provides raw data. The application performs several key calculations. **
     -   **Example**: The `useEvents` hook uses `Promise.all` to fetch all necessary related data (attendees, orders, ledger entries) concurrently when an event is selected.
     -   **Utility**: The `utils/apiHelpers.ts` file provides a `fetchAllPaginatedData` function to handle fetching all items from a paginated endpoint efficiently. This is the preferred method for getting complete datasets.
 
+-   #### **Verify, Don't Assume: Ask for Clarification**
+    -   **Do not make assumptions about the API.** All implementation details must be derived *exclusively* from the `Billetto API Docs.pdf` file provided or the existing implementation in `services/billettoService.ts`.
+    -   If a feature request requires information not explicitly covered in the provided documentation or existing code (e.g., a new endpoint, a different parameter, an undocumented data field), **you must ask for more information or clarification**. Do not invent endpoints or guess at data structures.
+
 ## 4. API Limitations & Development Pitfalls
 
 -   #### **No Attendee-to-TicketType Link**
@@ -51,7 +55,11 @@ The API provides raw data. The application performs several key calculations. **
     -   **Action**: **ALWAYS** divide by 100 before displaying any currency value to the user.
 
 -   #### **CORS Proxy is Mandatory**
-    -   All API requests from the browser **must** go through the proxy (`https://corsproxy.io/?`). The `BillettoApiClient` handles this, but it's a critical piece of infrastructure.
+    -   All API requests from the browser **must** go through the proxy (`https://yogamela.org/billetto-proxy.php?url=`). The `BillettoApiClient` handles this, but it's a critical piece of infrastructure.
+
+-   #### **React Version & Library Compatibility**
+    -   The application uses a modern version of React. **Do not downgrade React**.
+    -   Certain third-party libraries, specifically `react-wordcloud`, have been found to be incompatible and cause application crashes. **Do not re-introduce `react-wordcloud` or similar incompatible libraries.** The current word cloud implementation in `components/BookingQuestionsAnalysis.tsx` uses `d3-cloud` directly and is the stable, preferred solution.
 
 ## 5. Hooks and Their Roles
 

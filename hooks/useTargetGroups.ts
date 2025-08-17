@@ -5,8 +5,8 @@ import { BillettoApiClient, BillettoApiError } from '../services/billettoService
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
 
-const TARGET_GROUPS_PER_PAGE = 15;
-const MEMBERS_PER_PAGE = 50;
+const TARGET_GROUPS_PER_PAGE = 100;
+const MEMBERS_PER_PAGE = 100;
 
 export const useTargetGroups = (apiClient: BillettoApiClient | null) => {
     const [targetGroups, setTargetGroups] = useState<TargetGroup[]>([]);

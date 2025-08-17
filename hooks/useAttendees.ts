@@ -5,7 +5,7 @@ import { BillettoApiClient, BillettoApiError } from '../services/billettoService
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
 
-const ALL_ATTENDEES_PER_PAGE = 25;
+const ALL_ATTENDEES_PER_PAGE = 100;
 
 export const useAttendees = (apiClient: BillettoApiClient | null) => {
     const [allAttendees, setAllAttendees] = useState<Attendee[]>([]);

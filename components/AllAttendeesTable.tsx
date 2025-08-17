@@ -82,7 +82,7 @@ const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSele
             >
               <td data-label="Name" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{attendee.name}</td>
               <td data-label="Email" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{attendee.email}</td>
-              <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{attendee.event?.name || 'N/A'}</td>
+              <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{(attendee.event && typeof attendee.event === 'object') ? attendee.event.name : 'N/A'}</td>
               <td data-label="Status" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColorMap[attendee.state] || statusColorMap.default}`}>
                     {(attendee.state || '').replace(/_/g, ' ')}

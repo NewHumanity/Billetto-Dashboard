@@ -13,7 +13,7 @@ interface AttendeesViewProps {
     apiClient: BillettoApiClient | null;
 }
 
-const ALL_ATTENDEES_PER_PAGE = 25;
+const ALL_ATTENDEES_PER_PAGE = 100;
 
 const AttendeesView: React.FC<AttendeesViewProps> = ({ apiClient }) => {
     const {

@@ -94,7 +94,7 @@ const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendee, l
                     <div className="flex items-center">
                         <CurrencyIcon/>
                         <span className="ml-3">Price Paid:</span>
-                        <span className="ml-auto font-semibold">{formatCurrency(attendee.price, attendee.event?.currency)}</span>
+                        <span className="ml-auto font-semibold">{formatCurrency(attendee.price, (attendee.event && typeof attendee.event === 'object') ? attendee.event.currency : undefined)}</span>
                     </div>
                      <div className="flex items-center">
                         <CalendarIcon />
@@ -104,7 +104,7 @@ const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendee, l
                 </div>
             </div>
 
-            {attendee.event && (
+            {attendee.event && typeof attendee.event === 'object' && (
                 <div className="bg-slate-900/50 p-4 rounded-lg">
                     <h3 className="font-semibold text-slate-300 mb-2">Event Details</h3>
                     <p><strong className="text-white">Name:</strong> {attendee.event.name}</p>

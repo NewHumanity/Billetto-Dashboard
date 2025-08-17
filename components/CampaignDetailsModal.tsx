@@ -35,7 +35,7 @@ const CampaignOrdersTable: React.FC<{ orders: Order[] }> = ({ orders }) => {
                         <tr key={order.id} className="hover:bg-slate-700/50">
                             <td className="whitespace-nowrap py-3 px-4 text-sm text-slate-300">{formatDate(order.created_at)}</td>
                             <td className="whitespace-nowrap py-3 px-4 text-sm text-white font-medium">{order.buyer_name}</td>
-                            <td className="py-3 px-4 text-sm text-slate-300 truncate max-w-xs">{order.event?.name || 'N/A'}</td>
+                            <td className="py-3 px-4 text-sm text-slate-300 truncate max-w-xs">{order.event && typeof order.event === 'object' ? order.event.name : 'N/A'}</td>
                             <td className="whitespace-nowrap py-3 px-4 text-sm text-slate-100 font-semibold text-right">{formatCurrency(order.payout, order.currency)}</td>
                         </tr>
                     ))}

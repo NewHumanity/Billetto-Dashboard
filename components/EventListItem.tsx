@@ -1,95 +1,162 @@
-
-import React from 'react';
-import { BillettoEvent } from '../types';
+import React, { useState, useEffect } from 'react';
+import { BillettoEvent, EventListItemType } from '../types';
+import { CalendarIcon, CurrencyIcon, TicketIcon } from './icons';
+import { ChevronDownIcon } from './icons/ChevronDownIcon';
 
 interface EventListItemProps {
-    event: BillettoEvent;
+    item: EventListItemType;
     isSelected: boolean;
-    onSelect: () => void;
+    onSelect: (item: EventListItemType) => void;
 }
 
-const EventListItem: React.FC<EventListItemProps> = ({ event, isSelected, onSelect }) => {
+const stateColorMap: { [key: string]: string } = {
+    published: 'bg-green-500/20 text-green-300 border border-green-500/30',
+    completed: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+    cancelled: 'bg-red-500/20 text-red-300 border border-red-500/30',
+    draft: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30',
+    publishing: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
+    default: 'bg-slate-600/50 text-slate-300 border border-slate-500/50'
+};
+
+const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-GB', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+};
+
+const SingleEventRow: React.FC<{ event: BillettoEvent, isSelected: boolean, onSelect: () => void, isChild?: boolean }> = ({ event, isSelected, onSelect, isChild = false }) => {
     
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('en-GB', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        });
+    const itemClasses = `
+        block w-full p-3 text-left transition-all duration-200 cursor-pointer
+        ${isChild ? 'rounded-md' : 'rounded-lg'}
+        ${isSelected 
+            ? 'bg-slate-700/80 ring-2 ring-brand-primary' 
+            : 'hover:bg-slate-700/50'
+        }
+    `;
+    
+    return (
+        <div onClick={onSelect} className={itemClasses} role="button" aria-pressed={isSelected} tabIndex={0} onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect()}>
+            <div className="flex justify-between items-start">
+                <p className={`font-semibold pr-2 ${isSelected ? 'text-white' : 'text-slate-200'} ${isChild ? 'text-sm' : 'text-base'}`}>
+                    {event.name}
+                </p>
+                <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize whitespace-nowrap ${stateColorMap[event.state] || stateColorMap.default}`}>
+                    {(event.state || '').replace('_', ' ')}
+                </span>
+            </div>
+            <div className="mt-2 flex justify-between items-center text-sm text-slate-400">
+                <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-4"><CalendarIcon /></div>
+                    <span>{formatDate(event.starts_at)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 font-medium">
+                    <div className="w-4 h-4"><TicketIcon /></div>
+                    <span>
+                        {(event.availability?.available ?? 0).toLocaleString()} tickets left
+                    </span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+const EventListItem: React.FC<EventListItemProps> = ({ item, isSelected, onSelect }) => {
+    const isGroup = 'isGroup' in item && item.children.length > 0;
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    // Auto-expand if the group is selected
+    useEffect(() => {
+        if (isSelected && isGroup) {
+            setIsExpanded(true);
+        }
+    }, [isSelected, isGroup]);
+
+    const handleKeyPress = (e: React.KeyboardEvent, eventItem: EventListItemType) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(eventItem);
+        }
     };
 
-    const stateColorMap: { [key: string]: string } = {
-        published: 'bg-green-500/20 text-green-300 border border-green-500/30',
-        completed: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
-        cancelled: 'bg-red-500/20 text-red-300 border border-red-500/30',
-        draft: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30',
-        publishing: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
-        default: 'bg-slate-600/50 text-slate-300 border border-slate-500/50'
-    };
+    if (!isGroup) {
+        return (
+            <li>
+                <SingleEventRow event={item} isSelected={isSelected} onSelect={() => onSelect(item)} />
+            </li>
+        )
+    }
 
-    const availabilityColorMap: { [key: string]: string } = {
-        sold_out: 'text-red-400',
-        low: 'text-orange-400',
-        medium: 'text-yellow-400',
-        high: 'text-green-400',
-    };
-    
-    const availabilityTextMap: { [key: string]: string } = {
-        sold_out: 'Sold Out',
-        low: 'Low Tickets',
-        medium: 'Tickets Available',
-        high: 'High Availability',
-    };
+    const group = item;
+    const totalAvailability = group.children.reduce((sum, child) => sum + (child.availability?.available || 0), 0);
+    const groupIsSelected = isSelected && !group.children.some(c => c.id === (isSelected && (item as any).id));
 
     const itemClasses = `
         block w-full p-4 rounded-lg text-left transition-all duration-200 cursor-pointer border
-        ${isSelected 
+        ${groupIsSelected
             ? 'bg-slate-700/50 border-brand-primary shadow-lg' 
             : 'bg-slate-800/60 border-slate-700/50 hover:bg-slate-700/80 hover:border-slate-600'
         }
     `;
 
-    const availabilityStatus = event.availability?.status;
-    const availabilityColor = availabilityStatus ? availabilityColorMap[availabilityStatus] : '';
-    const availabilityText = availabilityStatus ? availabilityTextMap[availabilityStatus] : '';
-
-    const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onSelect();
-        }
-    };
-
     return (
-        <li>
-            <div 
-              onClick={onSelect} 
+        <li className="bg-slate-800/60 rounded-lg border border-slate-700/50">
+             <div 
+              onClick={() => onSelect(group)} 
               className={itemClasses} 
               role="button" 
-              aria-pressed={isSelected}
+              aria-pressed={groupIsSelected}
               tabIndex={0} 
-              onKeyPress={handleKeyPress}
+              onKeyPress={(e) => handleKeyPress(e, group)}
             >
-                <div className="flex justify-between items-start mb-2">
-                    <p className={`font-semibold text-base pr-2 ${isSelected ? 'text-white' : 'text-slate-200'}`}>
-                        {event.name}
-                    </p>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize whitespace-nowrap ${stateColorMap[event.state] || stateColorMap.default}`}>
-                        {(event.state || '').replace('_', ' ')}
+                <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                         <button 
+                            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }} 
+                            className="p-1 rounded-full hover:bg-slate-600/50 text-slate-400"
+                            aria-expanded={isExpanded}
+                            aria-label={isExpanded ? "Collapse event series" : "Expand event series"}
+                        >
+                            <ChevronDownIcon className={`w-5 h-5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        <p className={`font-semibold text-base ${groupIsSelected ? 'text-white' : 'text-slate-200'}`}>
+                            {group.name}
+                        </p>
+                    </div>
+                    <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize whitespace-nowrap bg-purple-500/20 text-purple-300 border border-purple-500/30`}>
+                        Series ({group.children.length})
                     </span>
                 </div>
-
-                {availabilityText && (
-                    <p className={`text-xs font-medium mb-3 ${availabilityColor}`}>
-                        {availabilityText}
-                    </p>
-                )}
-                
-                <div className="flex items-center text-xs text-slate-400">
-                    <span>🗓️</span>
-                    <span className="ml-1.5">{formatDate(event.starts_at)}</span>
+                <div className="mt-3 flex justify-between items-center text-sm text-slate-400 pl-9">
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-4 h-4"><CalendarIcon /></div>
+                        <span>{group.children.length > 0 ? `${formatDate(group.children[group.children.length - 1].starts_at)} - ${formatDate(group.children[0].starts_at)}` : 'No events'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 font-medium">
+                        <div className="w-4 h-4"><TicketIcon /></div>
+                        <span>
+                            {totalAvailability.toLocaleString()} total tickets left
+                        </span>
+                    </div>
                 </div>
             </div>
+            {isExpanded && (
+                <ul className="p-2 space-y-1">
+                    {group.children.map(child => (
+                        <li key={child.id}>
+                            <SingleEventRow 
+                                event={child} 
+                                isSelected={(isSelected && (item as any).id === child.id)}
+                                onSelect={() => onSelect(child)} 
+                                isChild 
+                            />
+                        </li>
+                    ))}
+                </ul>
+            )}
         </li>
     )
 };

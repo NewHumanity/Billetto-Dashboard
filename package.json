@@ -15,7 +15,7 @@
     "react-dom": "^19.1.1",
     "react": "^19.1.1",
     "idb": "^8.0.0",
-    "react-wordcloud": "^1.2.7"
+    "d3-cloud": "^1.2.7"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

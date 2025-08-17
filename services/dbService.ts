@@ -123,16 +123,16 @@ export const setBookingQuestionsAnalysisCache = async (eventId: string, analysis
 
 
 // --- Orders ---
-export const getOrdersCache = async (page: number): Promise<{ ordersData?: ListResponse<Order>, lastUpdated?: Date }> => {
+export const getOrdersCache = async (cacheKey: string): Promise<{ ordersData?: ListResponse<Order>, lastUpdated?: Date }> => {
     const db = await initDB();
     return {
-        ordersData: await db.get(STORES.ORDERS, `page-${page}`),
+        ordersData: await db.get(STORES.ORDERS, cacheKey),
         lastUpdated: await getFromKeyval('orders_last_updated')
     };
 };
-export const setOrdersCache = async (page: number, ordersData: ListResponse<Order>) => {
+export const setOrdersCache = async (cacheKey: string, ordersData: ListResponse<Order>) => {
     const db = await initDB();
-    await db.put(STORES.ORDERS, ordersData, `page-${page}`);
+    await db.put(STORES.ORDERS, ordersData, cacheKey);
     await setInKeyval('orders_last_updated', new Date());
 };
 

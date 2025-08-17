@@ -16,7 +16,7 @@ interface LedgerViewProps {
     apiClient: BillettoApiClient | null;
 }
 
-const LEDGER_ENTRIES_PER_PAGE = 25;
+const LEDGER_ENTRIES_PER_PAGE = 100;
 
 const LedgerView: React.FC<LedgerViewProps> = ({ apiClient }) => {
     const {
