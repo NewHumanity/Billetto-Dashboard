@@ -1,122 +1,228 @@
 
-import { useState, useCallback, useEffect } from 'react';
-import { Campaign, Order } from '../types';
-import { BillettoApiClient, BillettoApiError } from '../services/billettoService';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { Campaign, Order, LedgerEntry, ProcessedCampaign } from '../types';
+import { BillettoApiClient, BillettoApiError, BillettoErrorType } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
+import { fetchAllPaginatedData } from '../utils/apiHelpers';
 
-const CAMPAIGNS_PER_PAGE = 100;
-const CAMPAIGN_ORDERS_PER_PAGE = 100;
+const getCampaignScopeName = (event: Campaign['event']): string => {
+    if (!event) return 'Global (Account-wide)';
+    if (typeof event === 'object' && event !== null && event.name) return event.name;
+    if (typeof event === 'string') return `Event-specific`;
+    return 'Unknown Scope';
+};
+
+// Helper to process a single campaign for display and sorting
+const processCampaign = (campaign: Campaign): ProcessedCampaign => {
+  const firstEffect = campaign.effects?.data?.[0];
+  const discountEffectData = firstEffect?.data;
+
+  let discountDisplay = 'N/A';
+  let discountValueForSort = 0;
+  if (firstEffect?.type === 'percentage-discount-ticket-type-price' && discountEffectData?.percentage_discount) {
+    const discount = Number(discountEffectData.percentage_discount);
+    discountDisplay = `${discount}% OFF`;
+    discountValueForSort = discount;
+  }
+
+  const eventName = getCampaignScopeName(campaign.event);
+
+  return {
+    ...campaign,
+    eventName,
+    discountDisplay,
+    discountValueForSort,
+    usageCount: campaign.applications_count,
+    usageLimit: firstEffect?.usage_limit ?? null,
+  };
+};
 
 export const useCampaigns = (apiClient: BillettoApiClient | null) => {
-    const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-    const [loadingCampaigns, setLoadingCampaigns] = useState<boolean>(false);
+    const [campaigns, setCampaigns] = useState<ProcessedCampaign[]>([]);
+    const [loadingCampaigns, setLoadingCampaigns] = useState<boolean>(true);
     const [campaignsError, setCampaignsError] = useState<string | null>(null);
-    const [campaignsPagination, setCampaignsPagination] = useState({ currentPage: 1, total: 0 });
     const [lastUpdatedCampaigns, setLastUpdatedCampaigns] = useState<Date | null>(null);
-    const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
-    const [campaignDetails, setCampaignDetails] = useState<{ campaign: Campaign | null, orders: Order[] }>({ campaign: null, orders: [] });
-    const [campaignOrdersPage, setCampaignOrdersPage] = useState(1);
-    const [campaignOrdersTotal, setCampaignOrdersTotal] = useState(0);
-    const [loadingCampaignDetails, setLoadingCampaignDetails] = useState<boolean>(false);
-    const [campaignDetailsError, setCampaignDetailsError] = useState<string | null>(null);
+    const [analysisProgress, setAnalysisProgress] = useState<{ message: string; value: number } | null>(null);
 
-    const { items: sortedCampaigns, requestSort: requestCampaignSort, sortConfig: campaignSortConfig } = useSortableData(campaigns, { key: 'name', direction: 'ascending' });
+    // State for global search
+    const [allCampaignsForSearch, setAllCampaignsForSearch] = useState<ProcessedCampaign[] | null>(null);
+    const [loadingAllCampaigns, setLoadingAllCampaigns] = useState(false);
 
-    const fetchAndCacheCampaigns = useCallback(async (page = 1) => {
+    const { items: sortedCampaigns, requestSort: requestCampaignSort, sortConfig: campaignSortConfig } = useSortableData<ProcessedCampaign>(campaigns, { key: 'usageCount', direction: 'descending' });
+
+    const performFinancialAnalysis = useCallback(async (force = false) => {
         if (!apiClient) return;
         setLoadingCampaigns(true);
         setCampaignsError(null);
+
+        if (!force) {
+            const { campaigns: cached, lastUpdated } = await db.getProcessedCampaignsCache();
+            if (cached) {
+                setCampaigns(cached);
+                if (lastUpdated) setLastUpdatedCampaigns(new Date(lastUpdated));
+                setLoadingCampaigns(false);
+                return;
+            }
+        }
+        
         try {
-            const response = await apiClient.getCampaigns(page, CAMPAIGNS_PER_PAGE, ['event']);
-            setCampaigns(response.data);
-            setCampaignsPagination({ currentPage: page, total: response.total });
-            await db.setCampaignsCache(page, response);
-            const { lastUpdated } = await db.getCampaignsCache(page);
-            if (lastUpdated) setLastUpdatedCampaigns(new Date(lastUpdated));
+            setAnalysisProgress({ message: 'Fetching all campaigns...', value: 0 });
+            const allCampaignsData = await fetchAllPaginatedData<Campaign>('/campaigns?expand=event', apiClient);
+            
+            setAnalysisProgress({ message: 'Fetching all financial records...', value: 10 });
+            const allLedgerEntries = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries', apiClient);
+            const ledgerMapByOrder = allLedgerEntries.reduce((map, entry) => {
+                if (entry.order_id) {
+                    const orderId = String(entry.order_id);
+                    if (!map.has(orderId)) map.set(orderId, []);
+                    map.get(orderId)!.push(entry);
+                }
+                return map;
+            }, new Map<string, LedgerEntry[]>());
+
+            const processedCampaignsWithFinance: ProcessedCampaign[] = [];
+            
+            for (let i = 0; i < allCampaignsData.length; i++) {
+                const campaign = allCampaignsData[i];
+                const progressValue = 20 + (i / allCampaignsData.length) * 80;
+                setAnalysisProgress({ message: `Analyzing campaign ${i + 1} of ${allCampaignsData.length}: ${campaign.name}`, value: progressValue });
+
+                if (campaign.applications_count === 0) {
+                    processedCampaignsWithFinance.push({
+                        ...processCampaign(campaign),
+                        usageCount: 0,
+                        generatedRevenue: 0,
+                        totalDiscounts: 0,
+                        netRevenue: 0,
+                        averageOrderValue: 0,
+                        currency: undefined,
+                    });
+                    continue;
+                }
+
+                let campaignOrders: Order[] = [];
+                try {
+                    campaignOrders = await fetchAllPaginatedData<Order>(`/campaigns/${campaign.id}/orders`, apiClient);
+                } catch (e) {
+                    if (e instanceof BillettoApiError && e.type === BillettoErrorType.NOT_FOUND) {
+                        console.warn(`Campaign ${campaign.id} (${campaign.name}) seems to have no orders endpoint or is invalid. Assuming 0 orders.`);
+                        campaignOrders = [];
+                    } else {
+                        // For other errors, re-throw to be caught by the main catch block
+                        throw e;
+                    }
+                }
+                
+                let generatedRevenue = 0;
+                let totalDiscounts = 0;
+                let totalPayout = 0;
+
+                for (const order of campaignOrders) {
+                    const orderLedger = ledgerMapByOrder.get(order.id);
+                    if (orderLedger) {
+                        for (const entry of orderLedger) {
+                            if (entry.entry_type === 'ORDER_REVENUE') generatedRevenue += entry.amount;
+                            if (entry.entry_type === 'DISCOUNTS') totalDiscounts += entry.amount;
+                        }
+                    }
+                    totalPayout += order.payout;
+                }
+
+                const netRevenue = generatedRevenue + totalDiscounts;
+                const averageOrderValue = campaignOrders.length > 0 ? totalPayout / campaignOrders.length : 0;
+                const currency = campaignOrders[0]?.currency;
+
+                processedCampaignsWithFinance.push({
+                    ...processCampaign(campaign),
+                    usageCount: campaignOrders.length, 
+                    generatedRevenue,
+                    totalDiscounts,
+                    netRevenue,
+                    averageOrderValue,
+                    currency,
+                });
+            }
+
+            setCampaigns(processedCampaignsWithFinance);
+            await db.setProcessedCampaignsCache(processedCampaignsWithFinance);
+            setLastUpdatedCampaigns(new Date());
+
         } catch (err) {
-            if (err instanceof BillettoApiError) setCampaignsError(err.message);
-            else setCampaignsError('An unknown error occurred while fetching campaigns.');
+             if (err instanceof BillettoApiError) setCampaignsError(err.message);
+             else setCampaignsError('An unknown error occurred during financial analysis.');
         } finally {
             setLoadingCampaigns(false);
+            setAnalysisProgress(null);
         }
     }, [apiClient]);
 
+    const fetchAllCampaignsForSearch = useCallback(async () => {
+        if (!apiClient || loadingAllCampaigns) return;
+        setLoadingAllCampaigns(true);
+        try {
+            // Re-use fully analyzed data if available, it's the most complete list.
+            const { campaigns: cached } = await db.getProcessedCampaignsCache();
+            if(cached) {
+                setAllCampaignsForSearch(cached);
+                setLoadingAllCampaigns(false);
+                return;
+            }
+
+            const data = await fetchAllPaginatedData<Campaign>('/campaigns?expand=event', apiClient);
+            setAllCampaignsForSearch(data.map(processCampaign));
+            // Note: We don't cache this basic list to avoid stale data conflicts with the full analysis.
+            // The search will simply trigger a live fetch if the analyzed data isn't cached.
+        } catch (e) {
+            console.error("Failed to fetch all campaigns for search:", e);
+        } finally {
+            setLoadingAllCampaigns(false);
+        }
+    }, [apiClient, loadingAllCampaigns]);
+
     useEffect(() => {
-        const loadCachedCampaigns = async () => {
-            const { campaignsData: cachedCampaigns, lastUpdated: luCampaigns } = await db.getCampaignsCache(1);
-            if (cachedCampaigns) {
-                setCampaigns(cachedCampaigns.data);
-                setCampaignsPagination({ currentPage: 1, total: cachedCampaigns.total });
-                if (luCampaigns) setLastUpdatedCampaigns(new Date(luCampaigns));
+        const loadInitialData = async () => {
+            if (!apiClient) return;
+            setLoadingCampaigns(true);
+            const { campaigns: processed, lastUpdated } = await db.getProcessedCampaignsCache();
+            if (processed) {
+                setCampaigns(processed);
+                if (lastUpdated) setLastUpdatedCampaigns(new Date(lastUpdated));
             } else {
-                fetchAndCacheCampaigns(1);
+                 const { campaignsData: basic, lastUpdated: luBasic } = await db.getCampaignsCache(1);
+                 if (basic) {
+                    setCampaigns(basic.data.map(processCampaign));
+                    if (luBasic) setLastUpdatedCampaigns(new Date(luBasic));
+                 } else {
+                    try {
+                        const response = await apiClient.getCampaigns(1, 100, ['event']);
+                        setCampaigns(response.data.map(processCampaign));
+                        await db.setCampaignsCache(1, response);
+                        setLastUpdatedCampaigns(new Date());
+                    } catch (err) {
+                        if (err instanceof BillettoApiError) setCampaignsError(err.message);
+                        else setCampaignsError('An unknown error occurred while fetching campaigns.');
+                    }
+                 }
             }
-        };
-        if (apiClient) {
-            loadCachedCampaigns();
-        }
-    }, [apiClient, fetchAndCacheCampaigns]);
-
-    useEffect(() => {
-        const fetchCampaignOrders = async () => {
-            if (!selectedCampaignId || !apiClient) return;
-            setLoadingCampaignDetails(true);
-            setCampaignDetailsError(null);
-            
-            try {
-                const cached = await db.getCampaignOrdersCache(selectedCampaignId, campaignOrdersPage);
-                if (cached) {
-                    setCampaignDetails(prev => ({ ...prev, orders: cached.data }));
-                    setCampaignOrdersTotal(cached.total);
-                    setLoadingCampaignDetails(false);
-                    return;
-                }
-                
-                const response = await apiClient.getCampaignOrders(selectedCampaignId, campaignOrdersPage, CAMPAIGN_ORDERS_PER_PAGE, ['event']);
-                setCampaignDetails(prev => ({ ...prev, orders: response.data }));
-                setCampaignOrdersTotal(response.total);
-                await db.setCampaignOrdersCache(selectedCampaignId, campaignOrdersPage, response);
-            } catch (err) {
-                if (err instanceof BillettoApiError) setCampaignDetailsError(err.message);
-                else setCampaignDetailsError('An unknown error occurred while fetching campaign orders.');
-            } finally {
-                setLoadingCampaignDetails(false);
-            }
+            setLoadingCampaigns(false);
         };
 
-        if (selectedCampaignId) {
-            fetchCampaignOrders();
-        }
-    }, [selectedCampaignId, campaignOrdersPage, apiClient]);
-
-    const handleCampaignPageChange = async (page: number) => {
-        setCampaignsPagination(prev => ({ ...prev, currentPage: page }));
-        const { campaignsData } = await db.getCampaignsCache(page);
-        if (campaignsData) {
-            setCampaigns(campaignsData.data);
-            setCampaignsPagination({ currentPage: page, total: campaignsData.total });
-        } else {
-            fetchAndCacheCampaigns(page);
-        }
-    };
-    
-    const handleSelectCampaign = (campaignId: string) => {
-        const campaign = campaigns.find(c => c.id === campaignId);
-        if (campaign && campaign.usage_count > 0) {
-            setCampaignDetails({ campaign, orders: [] });
-            setCampaignOrdersPage(1);
-            setCampaignOrdersTotal(0);
-            setSelectedCampaignId(campaignId);
-        }
-    };
+        loadInitialData();
+    }, [apiClient]);
 
     return {
-        sortedCampaigns, loadingCampaigns, campaignsError, lastUpdatedCampaigns,
-        fetchAndCacheCampaigns, campaignsPagination, handleCampaignPageChange,
-        requestCampaignSort, campaignSortConfig,
-        handleSelectCampaign, selectedCampaignId, setSelectedCampaignId,
-        campaignDetails, loadingCampaignDetails, campaignDetailsError,
-        campaignOrdersPage, setCampaignOrdersPage, campaignOrdersTotal
+        sortedCampaigns, 
+        loadingCampaigns, 
+        campaignsError, 
+        lastUpdatedCampaigns,
+        requestCampaignSort, 
+        campaignSortConfig,
+        performFinancialAnalysis,
+        analysisProgress,
+        // For global search
+        allCampaigns: allCampaignsForSearch,
+        fetchAllCampaignsForSearch,
+        loadingAllCampaigns,
     };
 };

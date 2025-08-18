@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import { LedgerEntry, SortConfig } from '../types';
 
@@ -41,17 +39,25 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
   };
   
   const typeColorMap: { [key: string]: string } = {
-    ORDER_REVENUE: 'text-green-400',
-    REFUND: 'text-yellow-400',
-    PAYOUT: 'text-blue-400',
-    IMMEDIATE_PAYOUT: 'text-blue-400',
-    IMMEDIATE_PAYOUT_WITHDRAWAL: 'text-blue-400',
-    ORGANIZER_PAYMENT_FEE: 'text-red-400',
-    TICKETS_FEE: 'text-red-400',
-    PROMOTION_FEE: 'text-red-400',
-    INVOICE_FEE: 'text-red-400',
-    CHARGEBACK: 'text-red-500 font-bold',
-    default: 'text-slate-400',
+    ORDER_REVENUE: 'text-green-600 dark:text-green-400',
+    REFUND: 'text-yellow-600 dark:text-yellow-400',
+    PAYOUT: 'text-blue-600 dark:text-blue-400',
+    IMMEDIATE_PAYOUT: 'text-blue-600 dark:text-blue-400',
+    IMMEDIATE_PAYOUT_WITHDRAWAL: 'text-blue-600 dark:text-blue-400',
+    ORGANIZER_PAYMENT_FEE: 'text-red-600 dark:text-red-400',
+    TICKETS_FEE: 'text-red-600 dark:text-red-400',
+    PROMOTION_FEE: 'text-red-600 dark:text-red-400',
+    INVOICE_FEE: 'text-red-600 dark:text-red-400',
+    CHARGEBACK: 'text-red-700 dark:text-red-500 font-bold',
+    default: 'text-slate-600 dark:text-slate-400',
+  };
+
+  const transactionTypeColorMap: { [key: string]: string } = {
+    PAYMENT: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
+    REFUND: 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400',
+    CANCELLATION: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400',
+    FAILED: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400',
+    default: 'bg-slate-100 dark:bg-slate-600/20 text-slate-600 dark:text-slate-400',
   };
 
   const formatEntryType = (type: string) => {
@@ -61,7 +67,7 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
   const SortableHeader: React.FC<{ title: string, sortKey: keyof LedgerEntry | string, className?: string }> = ({ title, sortKey, className = '' }) => {
     const isSorted = sortConfig?.key === sortKey;
     return (
-        <th scope="col" className={`py-3.5 px-4 text-left text-sm font-semibold text-white ${className}`}>
+        <th scope="col" className={`py-3.5 px-4 text-left text-sm font-semibold text-slate-900 dark:text-white ${className}`}>
             <button onClick={() => requestSort(sortKey)} className={`flex items-center gap-2 group ${className.includes('text-right') ? 'justify-end w-full' : ''}`}>
                 {title}
                 <SortIndicator direction={isSorted ? sortConfig?.direction : undefined} />
@@ -71,13 +77,13 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
   };
 
   if (entries.length === 0) {
-    return <p className="text-slate-400 text-center py-8">No ledger entries found.</p>;
+    return <p className="text-slate-500 dark:text-slate-400 text-center py-8">No ledger entries found.</p>;
   }
 
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full responsive-table">
-        <thead className="bg-slate-900/80 sticky top-0">
+        <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Date" sortKey="created_at" />
             <SortableHeader title="Details" sortKey="entry_type" />
@@ -86,37 +92,44 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
             <SortableHeader title="Amount" sortKey="amount" className="text-right"/>
           </tr>
         </thead>
-        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800/50">
           {entries.map((entry) => {
             const isClickable = !!entry.order_id;
             return (
                 <tr 
                   key={entry.id}
-                  className={`transition-colors ${isClickable ? 'cursor-pointer md:hover:bg-slate-700/50' : 'md:hover:bg-slate-700/20'}`}
-                  onClick={() => isClickable && entry.order_id && onSelectOrder(entry.order_id)}
-                  onKeyPress={(e) => isClickable && entry.order_id && (e.key === 'Enter' || e.key === ' ') && onSelectOrder(entry.order_id)}
+                  className={`transition-colors ${isClickable ? 'cursor-pointer md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50' : 'md:hover:bg-gray-50 dark:md:hover:bg-slate-700/20'}`}
+                  onClick={() => isClickable && entry.order_id && onSelectOrder(String(entry.order_id))}
+                  onKeyPress={(e) => isClickable && entry.order_id && (e.key === 'Enter' || e.key === ' ') && onSelectOrder(String(entry.order_id))}
                   tabIndex={isClickable ? 0 : -1}
                   aria-label={isClickable ? `View details for order related to this ledger entry` : undefined}
                 >
-                    <td data-label="Date" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(entry.created_at)}</td>
+                    <td data-label="Date" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{formatDate(entry.created_at)}</td>
                     <td data-label="Details" className="py-4 px-4 text-sm font-medium">
                         <div className="flex items-center justify-between gap-2">
                            <div>
                              <p className={`font-semibold ${typeColorMap[entry.entry_type] || typeColorMap.default}`}>
                                 {formatEntryType(entry.entry_type)}
                              </p>
-                             {entry.entry_subtype && <p className="text-xs text-slate-400 capitalize">{entry.entry_subtype.replace(/_/g, ' ')}</p>}
+                             <div className="flex items-center gap-2 flex-wrap mt-1">
+                                {entry.transaction_type && (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${transactionTypeColorMap[entry.transaction_type] || transactionTypeColorMap.default}`}>
+                                    {entry.transaction_type.toLowerCase().replace(/_/g, ' ')}
+                                  </span>
+                                )}
+                                {entry.source && <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{entry.source}</p>}
+                             </div>
                            </div>
                            {isClickable && (
-                              <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/80 hover:text-brand-primary">[View Order]</span>
+                              <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/90 dark:text-brand-primary/80 hover:text-brand-primary">[View Order]</span>
                            )}
                         </div>
                     </td>
-                    <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 truncate max-w-xs">{entry.event?.name || 'N/A'}</td>
-                    <td data-label="VAT" className={`whitespace-nowrap py-4 px-4 text-sm font-semibold text-slate-400`}>
+                    <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300 truncate max-w-xs">{entry.event?.name || 'N/A'}</td>
+                    <td data-label="VAT" className={`whitespace-nowrap py-4 px-4 text-sm font-semibold text-slate-500 dark:text-slate-400`}>
                         {formatCurrency(entry.vat, entry.currency)}
                     </td>
-                    <td data-label="Amount" className={`whitespace-nowrap py-4 px-4 text-sm font-semibold ${entry.amount > 0 ? 'text-green-400' : entry.amount < 0 ? 'text-red-400' : 'text-slate-300'}`}>
+                    <td data-label="Amount" className={`whitespace-nowrap py-4 px-4 text-sm font-semibold ${entry.amount > 0 ? 'text-green-600 dark:text-green-400' : entry.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-300'}`}>
                         {formatCurrency(entry.amount, entry.currency)}
                     </td>
                 </tr>

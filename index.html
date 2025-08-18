@@ -16,9 +16,21 @@
     <link rel="apple-touch-icon" href="https://www.billetto.se/images/icons/apple-touch-icon-192x192.png" />
     
     <!-- Scripts & Styles -->
+    <script>
+      // Apply theme before rendering to prevent FOUC (Flash of Unstyled Content)
+      (function() {
+        const theme = localStorage.getItem('billettoTheme') || 'system';
+        if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'class', // Enable class-based dark mode
         theme: {
           extend: {
             colors: {
@@ -30,11 +42,31 @@
       }
     </script>
     <style>
+      /* CSS Variables for theming */
+      :root {
+        --scrollbar-track-bg: #e5e7eb; /* gray-200 */
+        --scrollbar-thumb-bg: #9ca3af; /* gray-400 */
+        --scrollbar-thumb-hover-bg: #6b7280; /* gray-500 */
+        --responsive-table-label-color: #6b7280; /* gray-500 */
+        --responsive-table-row-bg: rgba(255, 255, 255, 0.8);
+        --responsive-table-row-border: #e5e7eb;
+        --responsive-table-cell-border: rgba(229, 231, 235, 0.5);
+      }
+      .dark {
+        --scrollbar-track-bg: #1e293b; /* slate-800 */
+        --scrollbar-thumb-bg: #475569; /* slate-600 */
+        --scrollbar-thumb-hover-bg: #64748b; /* slate-500 */
+        --responsive-table-label-color: #94a3b8; /* slate-400 */
+        --responsive-table-row-bg: rgba(30, 41, 59, 0.5); /* bg-slate-800/50 */
+        --responsive-table-row-border: #334155; /* slate-700 */
+        --responsive-table-cell-border: rgba(71, 85, 105, 0.3); /* slate-700/30 */
+      }
+      
       /* Custom scrollbar for a more polished look */
       ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #1e293b; /* slate-800 */ }
-      ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; /* slate-600 */ }
-      ::-webkit-scrollbar-thumb:hover { background: #64748b; /* slate-500 */ }
+      ::-webkit-scrollbar-track { background: var(--scrollbar-track-bg); }
+      ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-bg); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover-bg); }
 
       /* Responsive Table to Card styles */
       @media (max-width: 767px) { /* Tailwind's `md` breakpoint */
@@ -45,10 +77,10 @@
           display: block;
         }
         .responsive-table tr {
-          background-color: rgba(30, 41, 59, 0.5); /* bg-slate-800/50 */
+          background-color: var(--responsive-table-row-bg);
           border-radius: 0.5rem; /* rounded-lg */
           margin-bottom: 1rem;
-          border: 1px solid rgb(51, 65, 85); /* border-slate-700 */
+          border: 1px solid var(--responsive-table-row-border);
           padding: 0.5rem 1rem;
         }
         .responsive-table td {
@@ -57,7 +89,7 @@
           align-items: center;
           padding-top: 0.75rem;
           padding-bottom: 0.75rem;
-          border-bottom: 1px solid rgba(71, 85, 105, 0.3); /* slate-700/30 */
+          border-bottom: 1px solid var(--responsive-table-cell-border);
           text-align: right;
           white-space: normal;
           max-width: 100%;
@@ -68,10 +100,50 @@
         .responsive-table td::before {
           content: attr(data-label);
           font-weight: 600;
-          color: #94a3b8; /* slate-400 */
+          color: var(--responsive-table-label-color);
           text-align: left;
           margin-right: 1rem;
         }
+      }
+
+      /* Styles for rendered HTML event descriptions */
+      .event-description {
+        line-height: 1.6;
+      }
+      .event-description p {
+        margin-bottom: 1rem;
+      }
+      .event-description ul, .event-description ol {
+        margin-left: 1.5rem;
+        margin-bottom: 1rem;
+        list-style-position: outside;
+      }
+      .event-description ul {
+        list-style-type: disc;
+      }
+      .event-description ol {
+        list-style-type: decimal;
+      }
+      .event-description a {
+        color: #1E90FF; /* brand-primary */
+        text-decoration: underline;
+        transition: color 0.2s;
+      }
+      .event-description a:hover {
+        color: #1872cc;
+      }
+      .event-description strong, .event-description b {
+        font-weight: 600;
+        color: #1e293b; /* slate-800 */
+      }
+      .dark .event-description strong, .dark .event-description b {
+        color: #f1f5f9; /* slate-100 */
+      }
+      .dark .event-description a {
+        color: #4dabff;
+      }
+      .dark .event-description a:hover {
+        color: #82c5ff;
       }
     </style>
   <script type="importmap">
@@ -88,7 +160,7 @@
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-slate-900 text-slate-100">
+  <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

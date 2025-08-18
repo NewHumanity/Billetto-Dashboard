@@ -1,8 +1,8 @@
 import { openDB, IDBPDatabase } from 'idb';
-import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee, BookingQuestionsAnalysis } from '../types';
+import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee, BookingQuestionsAnalysis, AudienceMember, ProcessedCampaign } from '../types';
 
 const DB_NAME = 'billetto-dashboard-cache';
-const DB_VERSION = 5; // Bump version for schema change
+const DB_VERSION = 7; // Bump version for schema change
 
 const STORES = {
     KEYVAL: 'keyval',
@@ -18,6 +18,8 @@ const STORES = {
     ATTENDEES: 'attendees',
     ATTENDEE_DETAILS: 'attendeeDetails',
     BOOKING_QUESTIONS_ANALYSIS: 'bookingQuestionsAnalysis',
+    AUDIENCE: 'audience',
+    PROCESSED_CAMPAIGNS: 'processedCampaigns',
 };
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -71,6 +73,16 @@ const initDB = () => {
             if (oldVersion < 5) {
                 if (!db.objectStoreNames.contains(STORES.BOOKING_QUESTIONS_ANALYSIS)) {
                     db.createObjectStore(STORES.BOOKING_QUESTIONS_ANALYSIS);
+                }
+            }
+            if (oldVersion < 6) {
+                if (!db.objectStoreNames.contains(STORES.AUDIENCE)) {
+                    db.createObjectStore(STORES.AUDIENCE);
+                }
+            }
+            if (oldVersion < 7) {
+                if (!db.objectStoreNames.contains(STORES.PROCESSED_CAMPAIGNS)) {
+                    db.createObjectStore(STORES.PROCESSED_CAMPAIGNS);
                 }
             }
         },
@@ -160,7 +172,7 @@ export const setLedgerCache = async (page: number, ledgerData: ListResponse<Ledg
     await setInKeyval('ledger_last_updated', new Date());
 };
 
-// --- Campaigns ---
+// --- Campaigns (Basic) ---
 export const getCampaignsCache = async (page: number): Promise<{ campaignsData?: ListResponse<Campaign>, lastUpdated?: Date }> => {
     const db = await initDB();
     return {
@@ -173,6 +185,21 @@ export const setCampaignsCache = async (page: number, campaignsData: ListRespons
     await db.put(STORES.CAMPAIGNS, campaignsData, `page-${page}`);
     await setInKeyval('campaigns_last_updated', new Date());
 };
+
+// --- Processed Campaigns (with Financials) ---
+export const getProcessedCampaignsCache = async (): Promise<{ campaigns?: ProcessedCampaign[], lastUpdated?: Date }> => {
+    const db = await initDB();
+    return {
+        campaigns: await db.get(STORES.PROCESSED_CAMPAIGNS, 'all_processed_campaigns'),
+        lastUpdated: await getFromKeyval('processed_campaigns_last_updated')
+    };
+};
+export const setProcessedCampaignsCache = async (campaigns: ProcessedCampaign[]) => {
+    const db = await initDB();
+    await db.put(STORES.PROCESSED_CAMPAIGNS, campaigns, 'all_processed_campaigns');
+    await setInKeyval('processed_campaigns_last_updated', new Date());
+};
+
 
 // --- Campaign Orders ---
 export const getCampaignOrdersCache = async (campaignId: string, page: number): Promise<ListResponse<Order> | undefined> => {
@@ -232,6 +259,21 @@ export const setAttendeeDetailsCache = async (details: Attendee) => {
     const db = await initDB();
     return db.put(STORES.ATTENDEE_DETAILS, details);
 };
+
+// --- Audience ---
+export const getAudienceCache = async (): Promise<{ audienceData?: AudienceMember[], lastUpdated?: Date }> => {
+    const db = await initDB();
+    return {
+        audienceData: await db.get(STORES.AUDIENCE, 'all_audience'),
+        lastUpdated: await getFromKeyval('audience_last_updated')
+    };
+};
+export const setAudienceCache = async (audienceData: AudienceMember[]) => {
+    const db = await initDB();
+    await db.put(STORES.AUDIENCE, audienceData, 'all_audience');
+    await setInKeyval('audience_last_updated', new Date());
+};
+
 
 // --- Clear all data ---
 export const clearAllCache = async () => {

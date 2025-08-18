@@ -1,33 +1,13 @@
-
 import React from 'react';
-import { Campaign, SortConfig } from '../types';
+import { SortConfig } from '../types';
+import { ProcessedCampaign } from '../types';
 
 interface CampaignsTableProps {
-  campaigns: Campaign[];
-  requestSort: (key: keyof Campaign | string) => void;
-  sortConfig: SortConfig<Campaign> | null;
+  campaigns: ProcessedCampaign[];
+  requestSort: (key: keyof ProcessedCampaign | string) => void;
+  sortConfig: SortConfig<ProcessedCampaign> | null;
   onSelectCampaign: (campaignId: string) => void;
 }
-
-const UsageProgress: React.FC<{count: number, limit: number | null}> = ({ count, limit }) => {
-    if (limit === null || limit === 0) {
-        return <div className="flex items-center">
-            <span className="text-sm text-slate-300 w-20 text-left">{count} / ∞</span>
-        </div>;
-    }
-    const percentage = limit > 0 ? Math.min((count / limit) * 100, 100) : 0;
-    return (
-        <div className="flex items-center w-full">
-            <div className="w-full bg-slate-700 rounded-full h-2.5 mr-3">
-                <div 
-                    className="bg-brand-primary h-2.5 rounded-full" 
-                    style={{ width: `${percentage}%` }}
-                ></div>
-            </div>
-            <span className="text-sm text-slate-300 w-16 text-right">{count} / {limit}</span>
-        </div>
-    );
-};
 
 const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }) => {
     const iconClass = "h-4 w-4 transition-opacity";
@@ -41,34 +21,46 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
 };
 
 const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort, sortConfig, onSelectCampaign }) => {
-    
-  const formatDiscount = (campaign: Campaign) => {
-    if (campaign.discount_type === 'percentage') {
-        return `${campaign.discount_value}% OFF`;
-    }
-    // A more robust solution would use the event's currency if available.
-    return `${(campaign.discount_value / 100).toFixed(2)} fixed`;
-  };
-
-  const formatDateRange = (from: string | null, to: string | null) => {
-    if (!from && !to) return 'Always active';
-    const fromDate = from ? new Date(from).toLocaleDateString('en-GB') : '...';
-    const toDate = to ? new Date(to).toLocaleDateString('en-GB') : '...';
-    return `${fromDate} - ${toDate}`;
-  };
   
-  const stateColorMap: { [key: string]: string } = {
-    active: 'bg-green-500/20 text-green-400',
-    inactive: 'bg-slate-600/20 text-slate-400',
-    expired: 'bg-red-500/20 text-red-400',
-    scheduled: 'bg-blue-500/20 text-blue-400',
+  const formatCurrency = (value: number | undefined, currencyCode: string | undefined): string => {
+    if (value === undefined || value === null) return 'N/A';
+    
+    if (!currencyCode || currencyCode === 'N/A') {
+        // Fallback for when currency is unknown: just format as a number.
+        return (value / 100).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+
+    try {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: currencyCode,
+        }).format(value / 100);
+    } catch (e) {
+        // Fallback for invalid currency code from API
+        return `${(value / 100).toFixed(2)} ${currencyCode}`;
+    }
   };
 
-  const SortableHeader: React.FC<{ title: string, sortKey: keyof Campaign | string, className?: string }> = ({ title, sortKey, className = '' }) => {
+  const stateColorMap: { [key: string]: string } = {
+    active: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
+    running: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
+    inactive: 'bg-slate-100 dark:bg-slate-600/20 text-slate-600 dark:text-slate-400',
+    paused: 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400',
+    expired: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400',
+    completed: 'bg-slate-100 dark:bg-slate-600/20 text-slate-600 dark:text-slate-400',
+    scheduled: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
+    prepared: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
+  };
+
+  const SortableHeader: React.FC<{ title: string, sortKey: keyof ProcessedCampaign | string, className?: string }> = ({ title, sortKey, className = '' }) => {
     const isSorted = sortConfig?.key === sortKey;
+    const alignClass = className?.includes('text-right') ? 'justify-end w-full' : '';
     return (
-        <th scope="col" className={`py-3.5 px-4 text-left text-sm font-semibold text-white ${className}`}>
-            <button onClick={() => requestSort(sortKey)} className="flex items-center gap-2 group">
+        <th scope="col" className={`py-3.5 px-4 text-left text-sm font-semibold text-slate-900 dark:text-white ${className}`}>
+            <button onClick={() => requestSort(sortKey)} className={`flex items-center gap-2 group ${alignClass}`}>
                 {title}
                 <SortIndicator direction={isSorted ? sortConfig?.direction : undefined} />
             </button>
@@ -77,54 +69,65 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
   };
 
   if (campaigns.length === 0) {
-    return <p className="text-slate-400 text-center py-8">No campaigns found for this account.</p>;
+    return <p className="text-slate-500 dark:text-slate-400 text-center py-8">No campaigns found for this account.</p>;
   }
+  
+  const hasAnalysisData = campaigns.length > 0 && campaigns[0].generatedRevenue !== undefined;
 
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full responsive-table">
-        <thead className="bg-slate-900/80 sticky top-0">
+        <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0">
           <tr>
-            <SortableHeader title="Name / Event" sortKey="name" className="w-1/4" />
+            <SortableHeader title="Name / Event" sortKey="name" />
             <SortableHeader title="State" sortKey="state" />
-            <SortableHeader title="Type" sortKey="type" />
-            <SortableHeader title="Discount" sortKey="discount_value" />
-            <SortableHeader title="Usage" sortKey="usage_count" className="w-1/4"/>
-            <SortableHeader title="Validity" sortKey="valid_from" />
+            <SortableHeader title="Discount" sortKey="discountValueForSort" />
+            <SortableHeader title="Total Orders" sortKey="usageCount" className="text-right" />
+            {hasAnalysisData && (
+              <>
+                <SortableHeader title="Generated Revenue" sortKey="generatedRevenue" className="text-right" />
+                <SortableHeader title="AOV" sortKey="averageOrderValue" className="text-right" />
+              </>
+            )}
           </tr>
         </thead>
-        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800/50">
           {campaigns.map((campaign) => {
-            const isClickable = campaign.usage_count > 0;
+            const isClickable = campaign.usageCount > 0;
             return (
                 <tr 
                     key={campaign.id} 
-                    className={`group md:hover:bg-slate-700/50 transition-colors ${isClickable ? 'cursor-pointer' : ''}`}
-                    onClick={() => isClickable && onSelectCampaign(campaign.id)}
-                    onKeyPress={(e) => isClickable && (e.key === 'Enter' || e.key === ' ') && onSelectCampaign(campaign.id)}
-                    tabIndex={isClickable ? 0 : -1}
-                    aria-label={isClickable ? `View orders for campaign ${campaign.name}` : undefined}
+                    className={`group md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50 transition-colors`}
+                    onClick={() => onSelectCampaign(campaign.id)}
+                    onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectCampaign(campaign.id)}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`View details for campaign ${campaign.name}`}
                 >
                     <td data-label="Campaign" className="py-4 px-4">
-                        <p className="font-semibold text-white truncate">{campaign.name}</p>
-                        <p className="text-xs text-slate-400 truncate">{campaign.event?.name || 'Global Campaign'}</p>
+                        <p className="font-semibold text-slate-900 dark:text-white truncate">{campaign.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{campaign.eventName}</p>
                     </td>
                     <td data-label="State" className="whitespace-nowrap py-4 px-4 text-sm">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${stateColorMap[campaign.state] || ''}`}>
                             {campaign.state}
                         </span>
                     </td>
-                    <td data-label="Type" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300 capitalize">{(campaign.type || '').replace('_', ' ')}</td>
-                    <td data-label="Discount" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-white">{formatDiscount(campaign)}</td>
-                    <td data-label="Usage" className="py-4 px-4 text-sm text-slate-300">
+                    <td data-label="Discount" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-slate-900 dark:text-white">{campaign.discountDisplay}</td>
+                    <td data-label="Total Orders" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">
                         <div className="flex items-center gap-4">
-                            <UsageProgress count={campaign.usage_count} limit={campaign.usage_limit} />
+                            <span>{campaign.usageCount.toLocaleString()}</span>
                             {isClickable && (
-                                <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/80 md:opacity-0 md:group-hover:opacity-100 transition-opacity">[Details]</span>
+                                <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/90 dark:text-brand-primary/80 md:opacity-0 md:group-hover:opacity-100 transition-opacity">[Details]</span>
                             )}
                         </div>
                     </td>
-                    <td data-label="Validity" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDateRange(campaign.valid_from, campaign.valid_to)}</td>
+                    {hasAnalysisData && (
+                      <>
+                        <td data-label="Generated Revenue" className="whitespace-nowrap py-4 px-4 text-sm text-green-600 dark:text-green-400 font-semibold">{formatCurrency(campaign.generatedRevenue, campaign.currency)}</td>
+                        <td data-label="AOV" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300 font-semibold">{formatCurrency(campaign.averageOrderValue, campaign.currency)}</td>
+                      </>
+                    )}
                 </tr>
           )})}
         </tbody>

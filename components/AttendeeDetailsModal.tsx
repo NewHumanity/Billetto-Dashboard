@@ -1,18 +1,40 @@
-
-import React from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Attendee } from '../types';
 import Loader from './Loader';
 import ErrorMessage from './ErrorMessage';
-import { CalendarIcon, CurrencyIcon, TicketIcon } from './icons';
+import { CalendarIcon, CurrencyIcon, TicketIcon, QuestionIcon, CheckCircleIcon, XCircleIcon, UserIcon, SparklesIcon } from './icons';
+import { AppContext } from '../contexts/AppContext';
 
 interface AttendeeDetailsModalProps {
-  attendee: Attendee | null;
-  loading: boolean;
-  error: string | null;
+  attendeeId: string;
   onClose: () => void;
 }
 
-const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendee, loading, error, onClose }) => {
+const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendeeId, onClose }) => {
+  const { apiClient } = useContext(AppContext)!;
+
+  const [attendee, setAttendee] = useState<Attendee | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchAttendeeDetails = async () => {
+        if (!attendeeId || !apiClient) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const fetchedAttendee = await apiClient.getAttendee(attendeeId, ['event', 'booking_question_responses', 'scannings', 'ticket_buyer', 'space', 'membership', 'subscription']);
+            setAttendee(fetchedAttendee);
+        } catch (err: any) {
+            setError(err.message || 'An unknown error occurred fetching attendee details.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    fetchAttendeeDetails();
+  }, [attendeeId, apiClient]);
+
+
   const formatCurrency = (value: number, currencyCode?: string) => {
     if (!currencyCode) return (value / 100).toFixed(2);
     return new Intl.NumberFormat('en-US', {
@@ -28,12 +50,12 @@ const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendee, l
   };
 
   const statusColorMap: { [key: string]: string } = {
-    sold: 'bg-green-500/20 text-green-400',
-    refunded: 'bg-yellow-500/20 text-yellow-400',
-    cancelled: 'bg-red-500/20 text-red-400',
-    reserved: 'bg-blue-500/20 text-blue-400',
-    manually_generated: 'bg-purple-500/20 text-purple-400',
-    default: 'bg-slate-500/20 text-slate-400'
+    sold: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
+    refunded: 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400',
+    cancelled: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400',
+    reserved: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
+    manually_generated: 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400',
+    default: 'bg-slate-100 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400'
   };
 
   React.useEffect(() => {
@@ -57,10 +79,10 @@ const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendee, l
         role="dialog"
         onClick={handleBackdropClick}
     >
-      <div className="bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-700 relative max-h-[90vh] flex flex-col" role="document">
+      <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-200 dark:border-slate-700 relative max-h-[90vh] flex flex-col" role="document">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors z-10"
+          className="absolute top-4 right-4 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors z-10"
           aria-label="Close details"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -68,21 +90,21 @@ const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendee, l
           </svg>
         </button>
 
-        <h2 id="attendee-details-title" className="text-2xl font-bold text-white mb-2">Attendee Details</h2>
+        <h2 id="attendee-details-title" className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Attendee Details</h2>
         
         {loading && <div className="flex-grow flex items-center justify-center"><Loader /></div>}
         {error && <ErrorMessage message={error} />}
         {attendee && (
           <div className="overflow-y-auto space-y-6 mt-4 pr-2">
-            <div className="bg-slate-900/50 p-4 rounded-lg">
-                <h3 className="font-semibold text-slate-300 mb-2">Attendee Information</h3>
-                <p><strong className="text-white">Name:</strong> {attendee.name}</p>
-                <p><strong className="text-white">Email:</strong> <a href={`mailto:${attendee.email}`} className="text-brand-primary hover:underline">{attendee.email}</a></p>
-                <p><strong className="text-white">ID:</strong> <span className="font-mono text-xs">{attendee.id}</span></p>
+            <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                <h3 className="font-semibold text-slate-600 dark:text-slate-300 mb-2">Attendee Information</h3>
+                <p><strong className="text-slate-900 dark:text-white">Name:</strong> {attendee.name}</p>
+                <p><strong className="text-slate-900 dark:text-white">Email:</strong> <a href={`mailto:${attendee.email}`} className="text-brand-primary hover:underline">{attendee.email}</a></p>
+                <p><strong className="text-slate-900 dark:text-white">ID:</strong> <span className="font-mono text-xs">{attendee.id}</span></p>
             </div>
             
-            <div className="bg-slate-900/50 p-4 rounded-lg">
-                <h3 className="font-semibold text-slate-300 mb-2">Ticket Information</h3>
+            <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                <h3 className="font-semibold text-slate-600 dark:text-slate-300 mb-2">Ticket Information</h3>
                 <div className="space-y-2">
                     <div className="flex items-center">
                         <TicketIcon />
@@ -104,11 +126,91 @@ const AttendeeDetailsModal: React.FC<AttendeeDetailsModalProps> = ({ attendee, l
                 </div>
             </div>
 
+            {attendee.ticket_buyer && typeof attendee.ticket_buyer === 'object' && (
+                 <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                    <h3 className="font-semibold text-slate-600 dark:text-slate-300 mb-2 flex items-center">
+                        <div className="w-6 h-6"><UserIcon /></div>
+                        <span className="ml-2">Ticket Buyer</span>
+                    </h3>
+                    <p><strong className="text-slate-900 dark:text-white">Name:</strong> {attendee.ticket_buyer.name}</p>
+                    <p><strong className="text-slate-900 dark:text-white">Email:</strong> <a href={`mailto:${attendee.ticket_buyer.email}`} className="text-brand-primary hover:underline">{attendee.ticket_buyer.email}</a></p>
+                </div>
+            )}
+            
+            {(attendee.space || attendee.membership || attendee.subscription) && (
+                 <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                    <h3 className="font-semibold text-slate-600 dark:text-slate-300 mb-2 flex items-center">
+                         <div className="w-6 h-6"><SparklesIcon /></div>
+                         <span className="ml-2">Additional Info</span>
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                        {attendee.space && typeof attendee.space === 'object' && (
+                            <p><strong className="text-slate-900 dark:text-white">Seat:</strong> {attendee.space.label} {attendee.space.seat_category && `(${attendee.space.seat_category})`}</p>
+                        )}
+                        {attendee.membership && typeof attendee.membership === 'object' && (
+                            <p><strong className="text-slate-900 dark:text-white">Membership:</strong> {attendee.membership.name}</p>
+                        )}
+                        {attendee.subscription && typeof attendee.subscription === 'object' && (
+                             <p><strong className="text-slate-900 dark:text-white">Subscription:</strong> {attendee.subscription.name} <span className="capitalize text-slate-500 dark:text-slate-400">({attendee.subscription.state})</span></p>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {attendee.event && typeof attendee.event === 'object' && (
-                <div className="bg-slate-900/50 p-4 rounded-lg">
-                    <h3 className="font-semibold text-slate-300 mb-2">Event Details</h3>
-                    <p><strong className="text-white">Name:</strong> {attendee.event.name}</p>
-                    <p><strong className="text-white">Starts:</strong> {formatDate(attendee.event.starts_at)}</p>
+                <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                    <h3 className="font-semibold text-slate-600 dark:text-slate-300 mb-2">Event Details</h3>
+                    <p><strong className="text-slate-900 dark:text-white">Name:</strong> {attendee.event.name}</p>
+                    <p><strong className="text-slate-900 dark:text-white">Starts:</strong> {formatDate(attendee.event.starts_at)}</p>
+                </div>
+            )}
+            
+            {attendee.scannings && attendee.scannings.data.length > 0 && (
+                <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                    <h3 className="font-semibold text-slate-600 dark:text-slate-300 mb-3">Scanning History</h3>
+                    <div className="space-y-3 max-h-48 overflow-y-auto">
+                        {attendee.scannings.data.map(scan => (
+                            <div key={scan.id} className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-3">
+                                    {scan.status === 'accepted' ? (
+                                        <span className="text-green-500 dark:text-green-400" title="Accepted"><CheckCircleIcon /></span>
+                                    ) : (
+                                        <span className="text-red-500 dark:text-red-400" title="Rejected"><XCircleIcon /></span>
+                                    )}
+                                    <div>
+                                        <p className="text-slate-900 dark:text-white capitalize">{scan.status}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(scan.created_at)}</p>
+                                    </div>
+                                </div>
+                                {scan.scanner_name && <p className="text-xs text-slate-500 dark:text-slate-500">{scan.scanner_name}</p>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {attendee.booking_question_responses && attendee.booking_question_responses.data.length > 0 && (
+                <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                    <h3 className="font-semibold text-slate-600 dark:text-slate-300 mb-3 flex items-center">
+                        <div className="w-6 h-6"><QuestionIcon /></div>
+                        <span className="ml-2">Booking Question Responses</span>
+                    </h3>
+                    <div className="space-y-4">
+                        {attendee.booking_question_responses.data.map((response) => (
+                           <div key={response.id} className="border-t border-gray-200 dark:border-slate-700/50 pt-3 first:border-t-0 first:pt-0">
+                                <label className="block text-sm font-medium text-slate-500 dark:text-slate-400">
+                                    {typeof response.question === 'string' ? response.question : response.question.name}
+                                    {response.required && <span className="text-red-500 dark:text-red-400/70 ml-1" title="Required field">*</span>}
+                                </label>
+                                {response.description && (
+                                    <p className="text-xs text-slate-500 dark:text-slate-500 mt-1 whitespace-pre-wrap">{response.description}</p>
+                                )}
+                                <p className="text-base text-slate-900 dark:text-white mt-2 pl-2 border-l-2 border-brand-primary/50">
+                                    {response.answer || response.text}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
           </div>

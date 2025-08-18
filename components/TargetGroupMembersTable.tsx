@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { TargetGroupMember, SortConfig } from '../types';
 
@@ -24,7 +23,7 @@ const TargetGroupMembersTable: React.FC<TargetGroupMembersTableProps> = ({ membe
   const SortableHeader: React.FC<{ title: string, sortKey: keyof TargetGroupMember }> = ({ title, sortKey }) => {
     const isSorted = sortConfig?.key === sortKey;
     return (
-        <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-white">
+        <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-slate-900 dark:text-white">
             <button onClick={() => requestSort(sortKey)} className="flex items-center gap-2 group">
                 {title}
                 <SortIndicator direction={isSorted ? sortConfig?.direction : undefined} />
@@ -34,23 +33,44 @@ const TargetGroupMembersTable: React.FC<TargetGroupMembersTableProps> = ({ membe
   };
 
   if (members.length === 0) {
-    return <p className="text-slate-400 text-center py-12">This target group has no members.</p>;
+    return <p className="text-slate-500 dark:text-slate-400 text-center py-12">This target group has no members.</p>;
   }
+
+  // Detect which type of member data we have by checking for a 'code' property
+  const isCodeBased = members.length > 0 && typeof members[0].code !== 'undefined';
 
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full responsive-table">
-        <thead className="bg-slate-900/80 sticky top-0">
-          <tr>
-            <SortableHeader title="Name" sortKey="name" />
-            <SortableHeader title="Email" sortKey="email" />
-          </tr>
+        <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0">
+          {isCodeBased ? (
+            <tr>
+              <SortableHeader title="Code" sortKey="code" />
+              <SortableHeader title="Usage Limit" sortKey="limit" />
+              <SortableHeader title="Quantity/Ticket" sortKey="quantity" />
+            </tr>
+          ) : (
+            <tr>
+              <SortableHeader title="Name" sortKey="name" />
+              <SortableHeader title="Email" sortKey="email" />
+            </tr>
+          )}
         </thead>
-        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800/50">
           {members.map((member) => (
-            <tr key={member.id} className="md:hover:bg-slate-700/50 transition-colors">
-              <td data-label="Name" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-white">{member.name}</td>
-              <td data-label="Email" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{member.email}</td>
+            <tr key={member.id} className="md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50 transition-colors">
+              {isCodeBased ? (
+                <>
+                  <td data-label="Code" className="whitespace-nowrap py-4 px-4 text-sm font-mono text-slate-900 dark:text-white">{member.code || 'N/A'}</td>
+                  <td data-label="Usage Limit" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{member.limit ?? <span className="text-slate-500 dark:text-slate-500 italic">Unlimited</span>}</td>
+                  <td data-label="Quantity/Ticket" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{member.quantity ?? <span className="text-slate-500 dark:text-slate-500 italic">Default</span>}</td>
+                </>
+              ) : (
+                <>
+                  <td data-label="Name" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-slate-900 dark:text-white">{member.name}</td>
+                  <td data-label="Email" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{member.email}</td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>

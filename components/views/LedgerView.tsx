@@ -1,66 +1,29 @@
-
-import React, { useEffect, useState } from 'react';
-import { BillettoApiClient } from '../../services/billettoService';
-import { useLedger } from '../../hooks/useLedger';
+import React, { useContext } from 'react';
 import RefreshBar from '../RefreshBar';
 import Loader from '../Loader';
 import ErrorMessage from '../ErrorMessage';
 import LedgerTable from '../LedgerTable';
 import Pagination from '../Pagination';
-import OrderDetailsModal from '../OrderDetailsModal';
-import { Order } from '../../types';
-import * as db from '../../services/dbService';
-import { BillettoApiError } from '../../services/billettoService';
-
-interface LedgerViewProps {
-    apiClient: BillettoApiClient | null;
-}
+import { AppContext } from '../../contexts/AppContext';
 
 const LEDGER_ENTRIES_PER_PAGE = 100;
 
-const LedgerView: React.FC<LedgerViewProps> = ({ apiClient }) => {
+const LedgerView: React.FC = () => {
+    const context = useContext(AppContext);
+    if (!context) throw new Error("LedgerView must be used within an AppContextProvider");
+    
     const {
         sortedLedger, loadingLedger, ledgerError, lastUpdatedLedger,
         fetchAndCacheLedger, ledgerPagination, handleLedgerPageChange,
-        selectedOrderId, setSelectedOrderId,
+        setOrderDetailsModalId,
         requestLedgerSort, ledgerSortConfig
-    } = useLedger(apiClient);
-
-    // Order details logic needs to be here because it's shared across views
-    const [orderDetails, setOrderDetails] = useState<Order | null>(null);
-    const [loadingOrderDetails, setLoadingOrderDetails] = useState<boolean>(false);
-    const [orderDetailsError, setOrderDetailsError] = useState<string | null>(null);
-
-    useEffect(() => {
-        const fetchOrderDetails = async () => {
-            if (!selectedOrderId || !apiClient) return;
-            setLoadingOrderDetails(true);
-            setOrderDetailsError(null);
-            const cachedOrder = await db.getOrderDetailsCache(selectedOrderId);
-            if (cachedOrder) {
-                setOrderDetails(cachedOrder);
-                setLoadingOrderDetails(false);
-                return;
-            }
-            try {
-                const order = await apiClient.getOrder(selectedOrderId, ['event', 'order_lines']);
-                setOrderDetails(order);
-                await db.setOrderDetailsCache(order);
-            } catch (err) {
-                if (err instanceof BillettoApiError) setOrderDetailsError(err.message);
-                else setOrderDetailsError('An unknown error occurred fetching order details.');
-            } finally {
-                setLoadingOrderDetails(false);
-            }
-        };
-        fetchOrderDetails();
-    }, [selectedOrderId, apiClient]);
+    } = context;
 
     return (
         <div className="animate-fade-in">
             <RefreshBar lastUpdated={lastUpdatedLedger} loading={loadingLedger} onRefresh={() => fetchAndCacheLedger(1)} viewName="financial records" />
-            <div className="bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                <h2 className="text-xl font-semibold text-white mb-4">Financial Ledger</h2>
+            <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Financial Ledger</h2>
                 {loadingLedger && sortedLedger.length === 0 ? <Loader /> :
                  ledgerError ? <ErrorMessage message={ledgerError} /> :
                     <>
@@ -68,7 +31,7 @@ const LedgerView: React.FC<LedgerViewProps> = ({ apiClient }) => {
                             entries={sortedLedger}
                             requestSort={requestLedgerSort}
                             sortConfig={ledgerSortConfig}
-                            onSelectOrder={setSelectedOrderId}
+                            onSelectOrder={setOrderDetailsModalId}
                         />
                         <Pagination
                             currentPage={ledgerPagination.currentPage}
@@ -79,14 +42,7 @@ const LedgerView: React.FC<LedgerViewProps> = ({ apiClient }) => {
                     </>
                 }
             </div>
-            {selectedOrderId && (
-                <OrderDetailsModal 
-                    order={orderDetails}
-                    loading={loadingOrderDetails}
-                    error={orderDetailsError}
-                    onClose={() => setSelectedOrderId(null)}
-                />
-            )}
+            {/* The OrderDetailsModal is now rendered globally in App.tsx */}
         </div>
     );
 };

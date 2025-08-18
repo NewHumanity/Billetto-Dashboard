@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 interface PaginationProps {
@@ -30,22 +31,22 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalItems, itemsP
   return (
     <div className="flex items-center justify-between mt-6 px-1">
         <div>
-            <p className="text-sm text-slate-400">
-                Showing <span className="font-medium text-white">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium text-white">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="font-medium text-white">{totalItems}</span> results
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+                Showing <span className="font-medium text-slate-800 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium text-slate-800 dark:text-white">{Math.min(currentPage * itemsPerPage, totalItems)}</span> of <span className="font-medium text-slate-800 dark:text-white">{totalItems}</span> results
             </p>
         </div>
         <div className="flex items-center space-x-2">
              <button
                 onClick={handlePrevious}
                 disabled={currentPage === 1}
-                className="px-4 py-2 text-sm font-medium text-white bg-slate-700/80 rounded-md hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-sm font-medium text-slate-800 dark:text-white bg-gray-100 dark:bg-slate-700/80 rounded-md hover:bg-gray-200 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Previous
             </button>
             <button
                 onClick={handleNext}
                 disabled={currentPage === totalPages}
-                className="px-4 py-2 text-sm font-medium text-white bg-slate-700/80 rounded-md hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-sm font-medium text-slate-800 dark:text-white bg-gray-100 dark:bg-slate-700/80 rounded-md hover:bg-gray-200 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Next
             </button>

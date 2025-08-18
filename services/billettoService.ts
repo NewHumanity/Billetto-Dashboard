@@ -1,4 +1,5 @@
 
+
 import { BillettoEvent, ListResponse, Attendee, Order, LedgerEntry, Campaign, TicketGroup, TargetGroup, TargetGroupMember } from '../types';
 
 // Switching to a more reliable proxy to handle fetch errors.
@@ -143,8 +144,9 @@ export class BillettoApiClient {
     return this.parseListResponse<BillettoEvent>(response);
   }
 
-  async getEvent(eventId: string): Promise<BillettoEvent> {
-    const endpoint = `/events/${eventId}`;
+  async getEvent(eventId: string, expand: string[] = []): Promise<BillettoEvent> {
+    const expandQuery = expand.length > 0 ? `?expand=${expand.join(',')}` : '';
+    const endpoint = `/events/${eventId}${expandQuery}`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     const eventData = await response.json();
     if (this.isValidEvent(eventData)) {
@@ -223,6 +225,17 @@ export class BillettoApiClient {
     const endpoint = `/campaigns?page=${page}&limit=${limit}${expandQuery}&sort=-created_at`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<Campaign>(response);
+  }
+
+  async getCampaign(campaignId: string, expand: string[] = []): Promise<Campaign> {
+    const expandQuery = expand.length > 0 ? `?expand=${expand.join(',')}` : '';
+    const endpoint = `/campaigns/${campaignId}${expandQuery}`;
+    const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
+    const campaignData = await response.json();
+    if (campaignData && campaignData.object === 'campaign' && typeof campaignData.id === 'string') {
+        return campaignData as Campaign;
+    }
+    throw new BillettoApiError('Invalid campaign data structure', BillettoErrorType.VALIDATION, undefined, campaignData);
   }
 
   async getCampaignOrders(campaignId: string, page = 1, limit = 100, expand: string[] = []): Promise<ListResponse<Order>> {

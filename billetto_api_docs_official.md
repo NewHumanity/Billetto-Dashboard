@@ -296,11 +296,17 @@ Stores information about booking question responses.
 
 The Booking Question Response object 
 
-| id  | string  | The unique response identifier. |
-| ----- | :---- | :---- |
-| object  | string | The object type, set to  "booking\_question\_response" |
-| text  | string  | The actual response to the question. |
-| question | string  (expandable) | The question ID.  Expands to the Booking Question resource. |
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| id | string | The unique response identifier. |
+| object | string | The object type, set to "booking_question_response". |
+| answer | string | The response to the question. In recent API versions, this is the primary field for the answer text. |
+| text | string (legacy) | The response to the question. This field may be present in older data and should be used as a fallback if `answer` is not available. |
+| question | string (expandable) | The question that was answered. This can either be a simple string (the question's name/title) or an expanded `BookingQuestion` object if requested via `expand`. |
+| description | string | The description that was displayed with the question. |
+| required | boolean | Indicates if the question answer was required. |
+| created_at | datetime | The creation date & time of the question definition. |
+| updated_at | datetime | The date & time this specific response was created or last updated. |
 
     
 Updated about 5 years ago 

@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { Order, BillettoEvent } from '../types';
 import { BillettoApiClient, BillettoApiError } from '../services/billettoService';
@@ -7,6 +6,7 @@ import { useSortableData } from './useSortableData';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
 
 const ORDERS_PER_PAGE = 100;
+const ALL_ORDERS_CACHE_KEY = 'all_orders_for_search';
 
 export interface OrderFilters {
   event: string;
@@ -27,6 +27,10 @@ export const useOrders = (apiClient: BillettoApiClient | null) => {
     const [ordersError, setOrdersError] = useState<string | null>(null);
     const [ordersPagination, setOrdersPagination] = useState({ currentPage: 1, total: 0 });
     const [lastUpdatedOrders, setLastUpdatedOrders] = useState<Date | null>(null);
+    
+    // State for global search
+    const [allOrders, setAllOrders] = useState<Order[] | null>(null);
+    const [loadingAllOrders, setLoadingAllOrders] = useState(false);
     
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
     const [orderDetails, setOrderDetails] = useState<Order | null>(null);
@@ -129,6 +133,28 @@ export const useOrders = (apiClient: BillettoApiClient | null) => {
         fetchOrderDetails();
     }, [selectedOrderId, apiClient]);
 
+    const fetchAllOrdersForSearch = useCallback(async () => {
+        if (!apiClient || loadingAllOrders) return;
+        setLoadingAllOrders(true);
+        try {
+            const cached = await db.getOrdersCache(ALL_ORDERS_CACHE_KEY);
+            if(cached.ordersData) {
+                setAllOrders(cached.ordersData.data);
+                setLoadingAllOrders(false);
+                return;
+            }
+
+            const data = await fetchAllPaginatedData<Order>('/orders?expand=event', apiClient);
+            setAllOrders(data);
+            await db.setOrdersCache(ALL_ORDERS_CACHE_KEY, { data, total: data.length } as any);
+        } catch (e) {
+            console.error("Failed to fetch all orders for search:", e);
+        } finally {
+            setLoadingAllOrders(false);
+        }
+    }, [apiClient, loadingAllOrders]);
+
+
     const handleOrderPageChange = (page: number) => {
         setOrdersPagination(p => ({ ...p, currentPage: page }));
     };
@@ -157,6 +183,10 @@ export const useOrders = (apiClient: BillettoApiClient | null) => {
         events,
         loadingEvents,
         filters,
-        applyFilters
+        applyFilters,
+        // For global search
+        allOrders,
+        loadingAllOrders,
+        fetchAllOrdersForSearch
     };
 };

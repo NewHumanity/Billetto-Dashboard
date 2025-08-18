@@ -104,7 +104,7 @@ const SimpleBarChart: React.FC<BarChartProps> = ({
 
   if (processedData.length === 0) {
     return (
-      <div className="flex items-center justify-center py-8 text-slate-400 bg-slate-800/30 rounded-lg border border-slate-700/50">
+      <div className="flex items-center justify-center py-8 text-slate-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800/30 rounded-lg border border-gray-200 dark:border-slate-700/50">
         <div className="text-center">
           <div className="text-2xl mb-2">📊</div>
           <div>{emptyMessage}</div>
@@ -145,7 +145,7 @@ const SimpleBarChart: React.FC<BarChartProps> = ({
           >
             <div className="grid grid-cols-4 items-center gap-3 text-sm">
               {/* Label */}
-              <div className="col-span-1 text-right text-slate-400 group-hover:text-slate-200 transition-colors duration-200">
+              <div className="col-span-1 text-right text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors duration-200">
                 <div className="truncate" title={item.text}>
                   {item.text}
                 </div>
@@ -158,7 +158,7 @@ const SimpleBarChart: React.FC<BarChartProps> = ({
               
               {/* Bar container */}
               <div className="col-span-3 relative">
-                <div className="bg-slate-800/50 rounded-lg border border-slate-700/30 overflow-hidden">
+                <div className="bg-gray-100/50 dark:bg-slate-800/50 rounded-lg border border-gray-200/50 dark:border-slate-700/30 overflow-hidden">
                   {/* Animated bar */}
                   <div
                     className={`${getBarHeight()} ${getBarColor(item, index)} 
@@ -186,9 +186,9 @@ const SimpleBarChart: React.FC<BarChartProps> = ({
                 
                 {/* Tooltip on hover */}
                 {isClickable && (
-                  <div className="absolute top-full left-0 mt-1 px-2 py-1 bg-slate-900 text-white text-xs 
+                  <div className="absolute top-full left-0 mt-1 px-2 py-1 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-xs 
                                  rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200
-                                 pointer-events-none z-10 whitespace-nowrap">
+                                 pointer-events-none z-10 whitespace-nowrap border border-gray-200 dark:border-slate-700">
                     Click to view details
                   </div>
                 )}
@@ -200,11 +200,11 @@ const SimpleBarChart: React.FC<BarChartProps> = ({
       
       {/* Summary footer */}
       {processedData.length > 0 && (
-        <div className="pt-4 mt-4 border-t border-slate-700/30 text-xs text-slate-500 text-center">
+        <div className="pt-4 mt-4 border-t border-gray-200/50 dark:border-slate-700/30 text-xs text-slate-500 text-center">
           {processedData.length} {processedData.length === 1 ? 'item' : 'items'} • 
           Total: {totalCount.toLocaleString()}
           {maxBars < data.length && (
-            <span className="ml-2 text-amber-400">
+            <span className="ml-2 text-amber-500 dark:text-amber-400">
               (showing top {maxBars} of {data.length})
             </span>
           )}

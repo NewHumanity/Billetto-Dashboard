@@ -1,4 +1,5 @@
 
+
 const CACHE_NAME = 'billetto-stats-v3';
 const urlsToCache = [
   '/',

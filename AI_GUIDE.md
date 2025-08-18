@@ -21,6 +21,11 @@ The API provides raw data. The application performs several key calculations. **
     -   **`Billetto Fees`**: Sum of `amount` from all `LedgerEntry` items where `type` is `fee` (this is a negative value).
     -   **`Net Payout`**: Sum of all ledger entries (`charge`, `fee`, `refund`, `adjustment`). If `payout` entries exist, their sum is used as the definitive paid-out amount.
 
+-   #### **Ticket Type Metrics (`sold_count`, `state`, `revenue`)**
+    -   **Location**: `hooks/useEvents.ts`
+    -   **Source Data**: The `/ticket_types` endpoint provides the capacity (`quantity`) and price, but **NOT** the number of tickets sold.
+    -   **Logic**: The `sold_count` for each ticket type is calculated by iterating through **all** of an event's `Order` objects and summing the `quantity` from each `OrderLine` that matches the ticket type's name. The `state` ('On Sale', 'Sold Out') and total `revenue` are then derived from this calculated `sold_count`.
+
 -   #### **Chart Data (Sales Velocity, Sales Channels)**
     -   **Location**: `hooks/useEvents.ts`
     -   **Source Data**: The `allOrders` array, fetched for a selected event.
@@ -60,6 +65,18 @@ The API provides raw data. The application performs several key calculations. **
 -   #### **React Version & Library Compatibility**
     -   The application uses a modern version of React. **Do not downgrade React**.
     -   Certain third-party libraries, specifically `react-wordcloud`, have been found to be incompatible and cause application crashes. **Do not re-introduce `react-wordcloud` or similar incompatible libraries.** The current word cloud implementation in `components/BookingQuestionsAnalysis.tsx` uses `d3-cloud` directly and is the stable, preferred solution.
+
+-   #### **API Response Inconsistencies**
+    -   The Billetto API can return data in slightly different formats. The application must be written defensively to handle these variations.
+    -   **Campaign Object**: The `Campaign` object has a complex, nested structure. Older documentation suggested a flat structure, but real-world API responses show that properties like discount values and usage limits are nested inside `effects` and `conditions` list objects. The application code in `hooks/useCampaigns.ts` correctly processes this nested structure into a flat `ProcessedCampaign` object for display.
+    -   **BookingQuestionResponse Object**: This object is significantly richer than the official documentation suggests.
+        -   **Response Text**: The text of a user's answer is primarily found in the `answer` field. However, older API versions or cached data might use a `text` field. The application logic **must** check for `answer` first, then fall back to `text` (e.g., `response.answer || response.text`).
+        -   **Question Identifier**: The `question` field can appear in two forms:
+            1.  A simple **string** containing the name of the question (e.g., `"Age"`). This is the common case in non-expanded responses.
+            2.  A full **object** of type `BookingQuestion` when the resource is requested with `expand=...question`.
+            -   The application logic **must** handle both cases by checking `typeof response.question`.
+        -   **Additional Fields**: The response object also contains useful metadata not found in base documentation, such as `description`, `required`, `created_at` (for the question), and `updated_at` (for the response). The application's type definitions (`types.ts`) correctly model these fields.
+
 
 ## 5. Hooks and Their Roles
 

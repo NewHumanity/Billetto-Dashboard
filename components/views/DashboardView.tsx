@@ -1,19 +1,20 @@
-import React from 'react';
-import { BillettoApiClient } from '../../services/billettoService';
-import { useEvents } from '../../hooks/useEvents';
+import React, { useContext } from 'react';
 import Loader from '../Loader';
 import ErrorMessage from '../ErrorMessage';
 import RefreshBar from '../RefreshBar';
 import EventListItem from '../EventListItem';
 import Dashboard from '../Dashboard';
-
-interface DashboardViewProps {
-    apiClient: BillettoApiClient | null;
-}
+import { AppContext } from '../../contexts/AppContext';
 
 const ATTENDEES_PER_PAGE = 100;
 
-const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
+const DashboardView: React.FC = () => {
+    const context = useContext(AppContext);
+
+    if (!context) {
+        throw new Error("DashboardView must be used within an AppContextProvider");
+    }
+    
     const {
         events, loadingEvents, eventsError, lastUpdatedEvents, fetchAndCacheEvents,
         filteredEventListItems, eventFilter, setEventFilter, selectedItem, setSelectedItem,
@@ -23,8 +24,14 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
         requestTicketGroupsSort, ticketGroupsSortConfig,
         loadingAnalysis, triggerAnalysis,
         filterTicketGroupId, setFilterTicketGroupId,
-        loadingProgress
-    } = useEvents(apiClient);
+        loadingProgress,
+        availableQuestions,
+        filterQuestionId, setFilterQuestionId,
+        filterAnswerText, setFilterAnswerText,
+        filteredAttendeesCount,
+        theme,
+        apiClient
+    } = context;
 
     const filterOptions = ['published', 'draft', 'completed', 'canceled', 'all'];
 
@@ -37,9 +44,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
         }
         if (!apiClient) {
           return (
-            <div className="text-center p-8 bg-slate-800 rounded-lg">
-              <h2 className="text-2xl font-semibold text-white">Welcome</h2>
-              <p className="mt-2 text-slate-400">Please provide your API Key to view events.</p>
+            <div className="text-center p-8 bg-white dark:bg-slate-800 rounded-lg">
+              <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Welcome</h2>
+              <p className="mt-2 text-slate-500 dark:text-slate-400">Please provide your API Key to view events.</p>
             </div>
           );
         }
@@ -66,8 +73,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
     const renderDashboardContent = () => {
       if (!selectedItem) {
         return (
-          <div className="flex items-center justify-center h-full rounded-xl bg-slate-800/50 border-2 border-dashed border-slate-700">
-            <p className="text-slate-400">Select an event to view its statistics.</p>
+          <div className="flex items-center justify-center h-full rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-dashed border-gray-300 dark:border-slate-700">
+            <p className="text-slate-500 dark:text-slate-400">Select an event to view its statistics.</p>
           </div>
         );
       }
@@ -124,6 +131,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
                 onTriggerAnalysis={triggerAnalysis}
                 filterTicketGroupId={filterTicketGroupId}
                 onFilterChange={setFilterTicketGroupId}
+                availableQuestions={availableQuestions}
+                filterQuestionId={filterQuestionId}
+                onSetFilterQuestionId={setFilterQuestionId}
+                filterAnswerText={filterAnswerText}
+                onSetFilterAnswerText={setFilterAnswerText}
+                filteredAttendeesCount={filteredAttendeesCount}
+                theme={theme}
             />
         );
       }
@@ -135,9 +149,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
         <div className="animate-fade-in">
             <RefreshBar lastUpdated={lastUpdatedEvents} loading={loadingEvents} onRefresh={fetchAndCacheEvents} viewName="events" />
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-8">
-                <div className="md:col-span-1 lg:col-span-1 bg-slate-800 p-4 rounded-xl shadow-lg h-fit">
-                    <h2 className="text-xl font-semibold text-white mb-4 px-2">Your Events</h2>
-                    <div className="flex flex-wrap gap-1 mb-4 bg-slate-900/50 p-1 rounded-lg">
+                <div className="md:col-span-1 lg:col-span-1 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg h-fit">
+                    <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 px-2">Your Events</h2>
+                    <div className="flex flex-wrap gap-1 mb-4 bg-gray-100 dark:bg-slate-900/50 p-1 rounded-lg">
                         {filterOptions.map(filter => (
                             <button
                                 key={filter}
@@ -145,7 +159,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ apiClient }) => {
                                 className={`flex-grow text-center px-2 py-1.5 text-xs font-semibold rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-primary/80 ${
                                     eventFilter === filter
                                         ? 'bg-brand-primary text-white shadow'
-                                        : 'text-slate-300 hover:bg-slate-700'
+                                        : 'text-slate-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
                                 }`}
                             >
                                 <span className="capitalize">{filter}</span>

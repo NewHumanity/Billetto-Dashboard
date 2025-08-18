@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 const timeSince = (date: Date): string => {
@@ -26,10 +27,10 @@ interface RefreshBarProps {
 
 const RefreshBar: React.FC<RefreshBarProps> = ({ lastUpdated, onRefresh, loading, viewName }) => {
   return (
-    <div className="bg-slate-800/50 rounded-lg p-3 mb-6 flex items-center justify-between text-sm flex-wrap gap-2">
-      <p className="text-slate-400">
+    <div className="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3 mb-6 flex items-center justify-between text-sm flex-wrap gap-2">
+      <p className="text-slate-500 dark:text-slate-400">
         {lastUpdated 
-          ? <>Last updated: <span className="font-semibold text-slate-300">{timeSince(lastUpdated)}</span></>
+          ? <>Last updated: <span className="font-semibold text-slate-700 dark:text-slate-300">{timeSince(lastUpdated)}</span></>
           : `No cached data for ${viewName}.`
         }
       </p>

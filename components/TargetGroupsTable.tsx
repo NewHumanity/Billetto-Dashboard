@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { TargetGroup, SortConfig } from '../types';
 
@@ -23,14 +22,6 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
 
 const TargetGroupsTable: React.FC<TargetGroupsTableProps> = ({ groups, onSelectGroup, selectedGroupId, requestSort, sortConfig }) => {
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
   const handleKeyPress = (e: React.KeyboardEvent, groupId: string) => {
     if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -41,7 +32,7 @@ const TargetGroupsTable: React.FC<TargetGroupsTableProps> = ({ groups, onSelectG
   const SortableHeader: React.FC<{ title: string, sortKey: keyof TargetGroup }> = ({ title, sortKey }) => {
     const isSorted = sortConfig?.key === sortKey;
     return (
-        <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-white">
+        <th scope="col" className="py-3.5 px-4 text-left text-sm font-semibold text-slate-900 dark:text-white">
             <button onClick={() => requestSort(sortKey)} className="flex items-center gap-2 group">
                 {title}
                 <SortIndicator direction={isSorted ? sortConfig?.direction : undefined} />
@@ -51,20 +42,19 @@ const TargetGroupsTable: React.FC<TargetGroupsTableProps> = ({ groups, onSelectG
   };
 
   if (groups.length === 0) {
-    return <p className="text-slate-400 text-center py-8">No target groups found.</p>;
+    return <p className="text-slate-500 dark:text-slate-400 text-center py-8">No target groups found.</p>;
   }
 
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full responsive-table">
-        <thead className="bg-slate-900/80 sticky top-0">
+        <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Name" sortKey="name" />
-            <SortableHeader title="Members" sortKey="members_count" />
-            <SortableHeader title="Created" sortKey="created_at" />
+            <SortableHeader title="Kind" sortKey="kind" />
           </tr>
         </thead>
-        <tbody className="divide-y md:divide-y-0 divide-slate-700 bg-slate-800/50">
+        <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800/50">
           {groups.map((group) => (
             <tr
               key={group.id}
@@ -76,14 +66,15 @@ const TargetGroupsTable: React.FC<TargetGroupsTableProps> = ({ groups, onSelectG
               className={`transition-colors duration-200 cursor-pointer ${
                 selectedGroupId === group.id
                   ? 'bg-brand-primary/20'
-                  : 'md:hover:bg-slate-700/50'
+                  : 'md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50'
               }`}
             >
-              <td data-label="Name" className={`whitespace-nowrap py-4 px-4 text-sm font-semibold ${selectedGroupId === group.id ? 'text-brand-primary' : 'text-white'}`}>
+              <td data-label="Name" className={`py-4 px-4 text-sm font-semibold ${selectedGroupId === group.id ? 'text-brand-primary' : 'text-slate-900 dark:text-white'}`}>
                 {group.name}
               </td>
-              <td data-label="Members" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{(group.members_count || 0).toLocaleString()}</td>
-              <td data-label="Created" className="whitespace-nowrap py-4 px-4 text-sm text-slate-300">{formatDate(group.created_at)}</td>
+              <td data-label="Kind" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300 capitalize">
+                {(group.kind || '').replace(/_/g, ' ')}
+              </td>
             </tr>
           ))}
         </tbody>

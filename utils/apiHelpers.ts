@@ -1,4 +1,5 @@
 
+
 import { ListResponse } from '../types';
 import { BillettoApiClient, BillettoApiError, BillettoErrorType } from '../services/billettoService';
 
@@ -60,7 +61,7 @@ export const fetchAllPaginatedData = async <T>(
 
             // Add a conservative delay between successful requests to prevent rate limiting.
             if (nextEndpoint) {
-                await delay(400);
+                await delay(750);
             }
         } catch (error) {
             if (error instanceof BillettoApiError && error.type === BillettoErrorType.RATE_LIMIT && retries < maxRetries) {
@@ -72,7 +73,7 @@ export const fetchAllPaginatedData = async <T>(
             } else {
                 // For other errors, or if max retries are exceeded, log the error and stop pagination.
                 console.error(`Failed to fetch endpoint ${nextEndpoint} after ${retries} retries. Halting pagination for this request.`, error);
-                nextEndpoint = null; // This will stop the loop
+                throw error; // Re-throw the error so the calling function knows about the failure.
             }
         }
     }

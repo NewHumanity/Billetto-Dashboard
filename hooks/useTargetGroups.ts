@@ -1,9 +1,9 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { TargetGroup, TargetGroupMember } from '../types';
 import { BillettoApiClient, BillettoApiError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
+import { fetchAllPaginatedData } from '../utils/apiHelpers';
 
 const TARGET_GROUPS_PER_PAGE = 100;
 const MEMBERS_PER_PAGE = 100;
@@ -21,8 +21,12 @@ export const useTargetGroups = (apiClient: BillettoApiClient | null) => {
     const [membersError, setMembersError] = useState<string | null>(null);
     const [membersPagination, setMembersPagination] = useState({ currentPage: 1, total: 0 });
 
+    // State for global search
+    const [allTargetGroups, setAllTargetGroups] = useState<TargetGroup[] | null>(null);
+    const [loadingAllTargetGroups, setLoadingAllTargetGroups] = useState(false);
+
     const { items: sortedTargetGroups, requestSort: requestTargetGroupSort, sortConfig: targetGroupSortConfig } = useSortableData(targetGroups, { key: 'name', direction: 'ascending' });
-    const { items: sortedTargetGroupMembers, requestSort: requestMemberSort, sortConfig: memberSortConfig } = useSortableData(targetGroupMembers, { key: 'name', direction: 'ascending' });
+    const { items: sortedTargetGroupMembers, requestSort: requestMemberSort, sortConfig: memberSortConfig } = useSortableData(targetGroupMembers, null);
 
     const fetchAndCacheTargetGroups = useCallback(async (page = 1) => {
         if (!apiClient) return;
@@ -94,6 +98,27 @@ export const useTargetGroups = (apiClient: BillettoApiClient | null) => {
         }
     }, [selectedTargetGroupId, fetchAndCacheTargetGroupMembers]);
 
+    const fetchAllTargetGroupsForSearch = useCallback(async () => {
+        if (!apiClient || loadingAllTargetGroups) return;
+        setLoadingAllTargetGroups(true);
+        try {
+            const cached = await db.getTargetGroupsCache(-1);
+            if(cached.groupsData) {
+                setAllTargetGroups(cached.groupsData.data);
+                setLoadingAllTargetGroups(false);
+                return;
+            }
+
+            const data = await fetchAllPaginatedData<TargetGroup>('/target_groups', apiClient);
+            setAllTargetGroups(data);
+            await db.setTargetGroupsCache(-1, { data, total: data.length } as any);
+        } catch (e) {
+            console.error("Failed to fetch all target groups for search:", e);
+        } finally {
+            setLoadingAllTargetGroups(false);
+        }
+    }, [apiClient, loadingAllTargetGroups]);
+
     const handleTargetGroupPageChange = async (page: number) => {
         setTargetGroupsPagination(prev => ({ ...prev, currentPage: page }));
         const { groupsData } = await db.getTargetGroupsCache(page);
@@ -117,6 +142,10 @@ export const useTargetGroups = (apiClient: BillettoApiClient | null) => {
         fetchAndCacheTargetGroups, targetGroupsPagination, handleTargetGroupPageChange,
         requestTargetGroupSort, targetGroupSortConfig, selectedTargetGroupId, setSelectedTargetGroupId,
         sortedTargetGroupMembers, loadingMembers, membersError, membersPagination, handleMemberPageChange,
-        requestMemberSort, memberSortConfig
+        requestMemberSort, memberSortConfig,
+        // For global search
+        allTargetGroups,
+        loadingAllTargetGroups,
+        fetchAllTargetGroupsForSearch
     };
 };

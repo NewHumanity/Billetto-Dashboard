@@ -1,11 +1,14 @@
 
+
 import { useState, useCallback, useEffect } from 'react';
 import { Attendee } from '../types';
 import { BillettoApiClient, BillettoApiError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
+import { fetchAllPaginatedData } from '../utils/apiHelpers';
 
 const ALL_ATTENDEES_PER_PAGE = 100;
+const ALL_ATTENDEES_CACHE_KEY = 'all_attendees_for_search';
 
 export const useAttendees = (apiClient: BillettoApiClient | null) => {
     const [allAttendees, setAllAttendees] = useState<Attendee[]>([]);
@@ -17,6 +20,10 @@ export const useAttendees = (apiClient: BillettoApiClient | null) => {
     const [attendeeDetails, setAttendeeDetails] = useState<Attendee | null>(null);
     const [loadingAttendeeDetails, setLoadingAttendeeDetails] = useState<boolean>(false);
     const [attendeeDetailsError, setAttendeeDetailsError] = useState<string | null>(null);
+
+    // State for global search
+    const [allAttendeesForSearch, setAllAttendeesForSearch] = useState<Attendee[] | null>(null);
+    const [loadingAllAttendeesForSearch, setLoadingAllAttendeesForSearch] = useState(false);
 
     const { items: sortedAllAttendees, requestSort: requestAllAttendeeSort, sortConfig: allAttendeeSortConfig } = useSortableData(allAttendees, { key: 'created_at', direction: 'descending' });
 
@@ -67,7 +74,7 @@ export const useAttendees = (apiClient: BillettoApiClient | null) => {
                 return;
             }
             try {
-                const attendee = await apiClient.getAttendee(selectedAttendeeId, ['event']);
+                const attendee = await apiClient.getAttendee(selectedAttendeeId, ['event', 'booking_question_responses', 'scannings', 'ticket_buyer', 'space', 'membership', 'subscription']);
                 setAttendeeDetails(attendee);
                 await db.setAttendeeDetailsCache(attendee);
             } catch (err) {
@@ -79,6 +86,27 @@ export const useAttendees = (apiClient: BillettoApiClient | null) => {
         };
         fetchAttendeeDetails();
     }, [selectedAttendeeId, apiClient]);
+
+    const fetchAllAttendeesForSearch = useCallback(async () => {
+        if (!apiClient || loadingAllAttendeesForSearch) return;
+        setLoadingAllAttendeesForSearch(true);
+        try {
+            const cached = await db.getAttendeesCache(-1); // Use a special page number for "all"
+            if (cached.attendeesData) {
+                setAllAttendeesForSearch(cached.attendeesData.data);
+                setLoadingAllAttendeesForSearch(false);
+                return;
+            }
+
+            const data = await fetchAllPaginatedData<Attendee>('/attendees?expand=event', apiClient);
+            setAllAttendeesForSearch(data);
+            await db.setAttendeesCache(-1, { data, total: data.length } as any);
+        } catch (e) {
+            console.error("Failed to fetch all attendees for search:", e);
+        } finally {
+            setLoadingAllAttendeesForSearch(false);
+        }
+    }, [apiClient, loadingAllAttendeesForSearch]);
 
     const handleAllAttendeesPageChange = async (page: number) => {
         setAllAttendeesPagination(prev => ({...prev, currentPage: page}));
@@ -95,6 +123,10 @@ export const useAttendees = (apiClient: BillettoApiClient | null) => {
         sortedAllAttendees, loadingAllAttendees, allAttendeesError, lastUpdatedAllAttendees,
         fetchAndCacheAllAttendees, allAttendeesPagination, handleAllAttendeesPageChange,
         requestAllAttendeeSort, allAttendeeSortConfig,
-        selectedAttendeeId, setSelectedAttendeeId, attendeeDetails, loadingAttendeeDetails, attendeeDetailsError
+        selectedAttendeeId, setSelectedAttendeeId, attendeeDetails, loadingAttendeeDetails, attendeeDetailsError,
+        // For global search
+        allAttendeesForSearch,
+        loadingAllAttendeesForSearch,
+        fetchAllAttendeesForSearch
     };
 };
