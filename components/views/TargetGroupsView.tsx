@@ -7,6 +7,8 @@ import TargetGroupMembersTable from '../TargetGroupMembersTable';
 import Pagination from '../Pagination';
 import { AppContext } from '../../contexts/AppContext';
 import { TargetGroup, SegmentRule } from '../../types';
+import { ExportIcon } from '../icons';
+import { exportToCsv } from '../../utils/export';
 
 const TARGET_GROUPS_PER_PAGE = 100;
 const MEMBERS_PER_PAGE = 100;
@@ -62,7 +64,16 @@ const TargetGroupsView: React.FC = () => {
             <RefreshBar lastUpdated={lastUpdatedTargetGroups} loading={loadingTargetGroups} onRefresh={() => fetchAndCacheTargetGroups(1)} viewName="target groups" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                    <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Target Groups</h2>
+                    <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
+                        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Target Groups</h2>
+                        <button
+                            onClick={() => exportToCsv(sortedTargetGroups, `billetto_target_groups_page_${targetGroupsPagination.currentPage}_${new Date().toISOString().split('T')[0]}.csv`)}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600"
+                        >
+                            <ExportIcon />
+                            <span>Export Page</span>
+                        </button>
+                    </div>
                     {loadingTargetGroups && sortedTargetGroups.length === 0 ? <Loader /> :
                      targetGroupsError ? <ErrorMessage message={targetGroupsError} /> :
                         <>
@@ -83,15 +94,23 @@ const TargetGroupsView: React.FC = () => {
                     }
                 </div>
                 <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg flex flex-col">
-                    <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 truncate" title={selectedGroup?.name || 'Group Members'}>
-                        {selectedGroup
-                            ? `Details for "${selectedGroup.name}"`
-                            : 'Group Details'
-                        }
-                        {!loadingMembers && selectedGroup && (
-                            <span className="text-slate-500 dark:text-slate-400 font-normal ml-2">({(membersPagination.total || 0).toLocaleString()} members)</span>
+                    <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
+                        <h2 className="text-xl font-semibold text-slate-900 dark:text-white truncate" title={selectedGroup?.name || 'Group Members'}>
+                            {selectedGroup
+                                ? `Details for "${selectedGroup.name}"`
+                                : 'Group Details'
+                            }
+                        </h2>
+                        {selectedGroup && sortedTargetGroupMembers.length > 0 && (
+                             <button
+                                onClick={() => exportToCsv(sortedTargetGroupMembers, `billetto_group_${selectedGroup.name.replace(/ /g, '_')}_members_page_${membersPagination.currentPage}_${new Date().toISOString().split('T')[0]}.csv`)}
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600"
+                            >
+                                <ExportIcon />
+                                <span>Export Members</span>
+                            </button>
                         )}
-                    </h2>
+                    </div>
                     {
                      !selectedTargetGroupId ? <div className="flex items-center justify-center h-full"><p className="text-slate-500 dark:text-slate-400">Select a group to see its members and rules.</p></div> :
                         <>
@@ -100,7 +119,12 @@ const TargetGroupsView: React.FC = () => {
                                 <RenderSegmentRules group={selectedGroup} />
                             </div>
 
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Members</h3>
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                                Members
+                                {!loadingMembers && selectedGroup && (
+                                    <span className="text-slate-500 dark:text-slate-400 font-normal ml-2">({(membersPagination.total || 0).toLocaleString()})</span>
+                                )}
+                            </h3>
                              {loadingMembers ? <Loader message="Loading members..." /> :
                              membersError ? <ErrorMessage message={membersError} /> :
                                 <>

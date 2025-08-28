@@ -1,60 +1,22 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Campaign, Order, CampaignCondition, CampaignEffect, ProcessedCampaign } from '../types';
 import Loader from './Loader';
-import ErrorMessage from './ErrorMessage';
+import ErrorMessage from '../ErrorMessage';
 import Pagination from './Pagination';
 import { TicketIcon, LockOpenIcon, SparklesIcon, CurrencyIcon, FeeIcon, NetPayoutIcon, CalculatorIcon } from './icons';
 import { AppContext } from '../contexts/AppContext';
 import StatCard from './StatCard';
-
-// A small, local version of OrdersTable, simplified for this modal.
-const CampaignOrdersTable: React.FC<{ orders: Order[] }> = ({ orders }) => {
-    const formatCurrency = (value: number, currencyCode: string) => {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(value / 100);
-    };
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    };
-
-    if (orders.length === 0) {
-        return <p className="text-slate-500 dark:text-slate-400 text-center py-8">No orders found for this campaign on this page.</p>;
-    }
-
-    return (
-        <div className="overflow-x-auto">
-            <table className="min-w-full">
-                <thead className="bg-gray-100 dark:bg-slate-900/80">
-                    <tr>
-                        <th scope="col" className="py-3 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Date</th>
-                        <th scope="col" className="py-3 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Buyer</th>
-                        <th scope="col" className="py-3 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Event</th>
-                        <th scope="col" className="py-3 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider text-right">Payout</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                    {orders.map(order => (
-                        <tr key={order.id} className="hover:bg-gray-100 dark:hover:bg-slate-700/50">
-                            <td className="whitespace-nowrap py-3 px-4 text-sm text-slate-600 dark:text-slate-300">{formatDate(order.created_at)}</td>
-                            <td className="whitespace-nowrap py-3 px-4 text-sm text-slate-900 dark:text-white font-medium">{order.buyer_name}</td>
-                            <td className="py-3 px-4 text-sm text-slate-600 dark:text-slate-300 truncate max-w-xs">{order.event && typeof order.event === 'object' ? order.event.name : 'N/A'}</td>
-                            <td className="whitespace-nowrap py-3 px-4 text-sm text-slate-800 dark:text-slate-100 font-semibold text-right">{formatCurrency(order.payout, order.currency)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-};
-
+import OrdersDetailTable from './modal_tables/OrdersDetailTable';
 
 interface CampaignDetailsModalProps {
   campaignId: string;
   onClose: () => void;
+  pushView: (view: any) => void;
 }
 
 const CAMPAIGN_ORDERS_PER_PAGE = 100;
 
-const CampaignDetailsModal: React.FC<CampaignDetailsModalProps> = ({ campaignId, onClose }) => {
+const CampaignDetailsModal: React.FC<CampaignDetailsModalProps> = ({ campaignId, onClose, pushView }) => {
   const { apiClient, sortedCampaigns } = useContext(AppContext)!;
   const [campaign, setCampaign] = useState<ProcessedCampaign | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -66,7 +28,6 @@ const CampaignDetailsModal: React.FC<CampaignDetailsModalProps> = ({ campaignId,
     if (value === undefined || value === null) return 'N/A';
     
     if (!currencyCode || currencyCode === 'N/A') {
-        // Fallback for when currency is unknown: just format as a number.
         return (value / 100).toLocaleString('en-US', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
@@ -79,7 +40,6 @@ const CampaignDetailsModal: React.FC<CampaignDetailsModalProps> = ({ campaignId,
             currency: currencyCode,
         }).format(value / 100);
     } catch (e) {
-        // Fallback for invalid currency code from API
         return `${(value / 100).toFixed(2)} ${currencyCode}`;
     }
   };
@@ -134,17 +94,6 @@ const CampaignDetailsModal: React.FC<CampaignDetailsModalProps> = ({ campaignId,
     if (e.target === e.currentTarget) onClose();
   };
   
-  const stateColorMap: { [key: string]: string } = {
-    active: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
-    running: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
-    inactive: 'bg-slate-100 dark:bg-slate-600/20 text-slate-600 dark:text-slate-400',
-    paused: 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400',
-    expired: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400',
-    completed: 'bg-slate-100 dark:bg-slate-600/20 text-slate-600 dark:text-slate-400',
-    scheduled: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
-    prepared: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
-  };
-
   const renderCondition = (condition: CampaignCondition) => {
     const { type, data } = condition;
     switch (type) {
@@ -182,7 +131,7 @@ const CampaignDetailsModal: React.FC<CampaignDetailsModalProps> = ({ campaignId,
             <div className="mb-4">
                 <h2 id="campaign-details-title" className="text-2xl font-bold text-slate-900 dark:text-white mb-1 truncate">{campaign.name}</h2>
                 <div className="flex items-center gap-4 text-sm">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${stateColorMap[campaign.state] || ''}`}>{campaign.state}</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize`}>{campaign.state}</span>
                     <span className="text-slate-500 dark:text-slate-400">{campaign.eventName}</span>
                 </div>
             </div>
@@ -227,7 +176,7 @@ const CampaignDetailsModal: React.FC<CampaignDetailsModalProps> = ({ campaignId,
                       <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 flex items-center"><TicketIcon /> <span className="ml-2">Orders Using This Campaign ({(pagination.total || 0).toLocaleString()})</span></h3>
                       {loading && orders.length > 0 ? <Loader message="Fetching more orders..." /> :
                         <>
-                          <CampaignOrdersTable orders={orders} />
+                          <OrdersDetailTable orders={orders} pushView={pushView} />
                           <Pagination currentPage={pagination.currentPage} totalItems={pagination.total} itemsPerPage={CAMPAIGN_ORDERS_PER_PAGE} onPageChange={handlePageChange} />
                         </>
                       }

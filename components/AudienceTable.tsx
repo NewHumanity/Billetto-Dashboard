@@ -1,6 +1,5 @@
 import React from 'react';
 import { AudienceMember, SortConfig } from '../types';
-import { CalendarIcon, CurrencyIcon, TicketIcon, UserIcon } from './icons';
 
 interface AudienceTableProps {
   audienceMembers: AudienceMember[];
@@ -18,6 +17,18 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
         return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>;
     }
     return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
+};
+
+const segmentColorMap: Record<string, string> = {
+    'Champions': 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300 border-green-200 dark:border-green-500/30',
+    'Loyal Customers': 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300 border-blue-200 dark:border-blue-500/30',
+    'Potential Loyalists': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-300 border-cyan-200 dark:border-cyan-500/30',
+    'New Customers': 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-300 border-sky-200 dark:border-sky-500/30',
+    'At Risk': 'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-300 border-orange-200 dark:border-orange-500/30',
+    'Hibernating': 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600',
+    'Needs Attention': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-300 border-yellow-200 dark:border-yellow-500/30',
+    'Regular': 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-500',
+    'default': 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-500'
 };
 
 const AudienceTable: React.FC<AudienceTableProps> = ({ audienceMembers, requestSort, sortConfig, onSelectCustomer }) => {
@@ -61,7 +72,7 @@ const AudienceTable: React.FC<AudienceTableProps> = ({ audienceMembers, requestS
   };
 
   if (audienceMembers.length === 0) {
-    return <p className="text-slate-500 dark:text-slate-400 text-center py-8">No audience data found. Try refreshing the analysis.</p>;
+    return <p className="text-slate-500 dark:text-slate-400 text-center py-8">No audience data found for this segment. Try refreshing the analysis.</p>;
   }
 
   return (
@@ -70,6 +81,7 @@ const AudienceTable: React.FC<AudienceTableProps> = ({ audienceMembers, requestS
         <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0">
           <tr>
             <SortableHeader title="Customer" sortKey="name" />
+            <SortableHeader title="Segment" sortKey="rfmSegment" />
             <SortableHeader title="Total Spent (CLV)" sortKey="totalSpent" className="text-right" />
             <SortableHeader title="Events Attended" sortKey="eventsAttended" className="text-right"/>
             <SortableHeader title="Last Attended" sortKey="lastAttendedDate" />
@@ -88,6 +100,11 @@ const AudienceTable: React.FC<AudienceTableProps> = ({ audienceMembers, requestS
               <td data-label="Customer" className="py-4 px-4">
                 <p className="font-semibold text-slate-900 dark:text-white truncate">{member.name}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{member.email}</p>
+              </td>
+              <td data-label="Segment" className="py-4 px-4">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${segmentColorMap[member.rfmSegment || 'default']}`}>
+                  {member.rfmSegment}
+                </span>
               </td>
               <td data-label="Total Spent" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-green-600 dark:text-green-400">
                 {formatCurrency(member.totalSpent, member.currency)}

@@ -84,7 +84,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ onClose }) => {
     };
 
     return (
-        <div onClick={handleBackdropClick} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center pt-24 p-4 z-50 animate-fade-in">
+        <div onClick={handleBackdropClick} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center pt-12 md:pt-24 p-4 z-50 animate-fade-in">
             <div className="w-full max-w-2xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl border border-gray-200 dark:border-slate-700 rounded-2xl shadow-2xl h-fit max-h-[70vh] flex flex-col" onKeyDown={handleKeyDown}>
                 <div className="flex items-center gap-4 p-4 border-b border-gray-200 dark:border-slate-700/50">
                     <div className="text-slate-400">

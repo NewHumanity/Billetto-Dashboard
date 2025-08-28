@@ -1,8 +1,9 @@
+
 import { openDB, IDBPDatabase } from 'idb';
-import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee, BookingQuestionsAnalysis, AudienceMember, ProcessedCampaign } from '../types';
+import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee, BookingQuestionsAnalysis, AudienceMember, ProcessedCampaign, AnalyzedEvent } from '../types';
 
 const DB_NAME = 'billetto-dashboard-cache';
-const DB_VERSION = 7; // Bump version for schema change
+const DB_VERSION = 8; // Bump version for schema change
 
 const STORES = {
     KEYVAL: 'keyval',
@@ -20,6 +21,7 @@ const STORES = {
     BOOKING_QUESTIONS_ANALYSIS: 'bookingQuestionsAnalysis',
     AUDIENCE: 'audience',
     PROCESSED_CAMPAIGNS: 'processedCampaigns',
+    PERFORMANCE_ANALYSIS: 'performanceAnalysis',
 };
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -85,6 +87,11 @@ const initDB = () => {
                     db.createObjectStore(STORES.PROCESSED_CAMPAIGNS);
                 }
             }
+            if (oldVersion < 8) {
+                if (!db.objectStoreNames.contains(STORES.PERFORMANCE_ANALYSIS)) {
+                    db.createObjectStore(STORES.PERFORMANCE_ANALYSIS);
+                }
+            }
         },
     });
     return dbPromise;
@@ -94,7 +101,7 @@ const getFromKeyval = async (key: IDBValidKey) => {
     const db = await initDB();
     return db.get(STORES.KEYVAL, key);
 };
-const setInKeyval = async (key: IDBValidKey, val: any) => {
+export const setInKeyval = async (key: IDBValidKey, val: any) => {
     const db = await initDB();
     return db.put(STORES.KEYVAL, val, key);
 };
@@ -272,6 +279,20 @@ export const setAudienceCache = async (audienceData: AudienceMember[]) => {
     const db = await initDB();
     await db.put(STORES.AUDIENCE, audienceData, 'all_audience');
     await setInKeyval('audience_last_updated', new Date());
+};
+
+// --- Performance Analysis ---
+export const getPerformanceCache = async (): Promise<{ analyzedEvents?: AnalyzedEvent[], lastUpdated?: Date }> => {
+    const db = await initDB();
+    return {
+        analyzedEvents: await db.get(STORES.PERFORMANCE_ANALYSIS, 'all_analyzed_events'),
+        lastUpdated: await getFromKeyval('performance_last_updated')
+    };
+};
+export const setPerformanceCache = async (analyzedEvents: AnalyzedEvent[]) => {
+    const db = await initDB();
+    await db.put(STORES.PERFORMANCE_ANALYSIS, analyzedEvents, 'all_analyzed_events');
+    await setInKeyval('performance_last_updated', new Date());
 };
 
 

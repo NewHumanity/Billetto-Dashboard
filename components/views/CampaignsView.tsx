@@ -4,7 +4,9 @@ import Loader from '../Loader';
 import ErrorMessage from '../ErrorMessage';
 import CampaignsTable from '../CampaignsTable';
 import { AppContext } from '../../contexts/AppContext';
-import { SparklesIcon } from '../icons';
+import { SparklesIcon, ExportIcon } from '../icons';
+import CampaignDetailsView from '../modal_views/CampaignDetailsView';
+import { exportToCsv } from '../../utils/export';
 
 const CampaignsView: React.FC = () => {
     const context = useContext(AppContext);
@@ -13,12 +15,20 @@ const CampaignsView: React.FC = () => {
     const {
         sortedCampaigns, loadingCampaigns, campaignsError, lastUpdatedCampaigns,
         requestCampaignSort, campaignSortConfig,
-        setCampaignDetailsModalId,
+        setModalView,
         performFinancialAnalysis,
         analysisProgress
     } = context;
 
     const hasAnalysisData = sortedCampaigns.length > 0 && sortedCampaigns[0].generatedRevenue !== undefined;
+
+    const handleSelectCampaign = (campaignId: string) => {
+        const campaign = sortedCampaigns.find(c => c.id === campaignId);
+        setModalView({
+            title: campaign ? campaign.name : "Campaign Details",
+            content: (props) => <CampaignDetailsView {...props} campaignId={campaignId} />
+        });
+    };
 
     const renderContent = () => {
         if (loadingCampaigns && analysisProgress) {
@@ -51,7 +61,7 @@ const CampaignsView: React.FC = () => {
                 campaigns={sortedCampaigns}
                 requestSort={requestCampaignSort}
                 sortConfig={campaignSortConfig}
-                onSelectCampaign={setCampaignDetailsModalId}
+                onSelectCampaign={handleSelectCampaign}
             />
         );
     };
@@ -60,7 +70,18 @@ const CampaignsView: React.FC = () => {
         <div className="animate-fade-in">
             <RefreshBar lastUpdated={lastUpdatedCampaigns} loading={loadingCampaigns && !analysisProgress} onRefresh={() => performFinancialAnalysis(true)} viewName="campaigns" />
             <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Marketing Campaigns</h2>
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
+                    <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Marketing Campaigns</h2>
+                    {sortedCampaigns.length > 0 && (
+                        <button
+                            onClick={() => exportToCsv(sortedCampaigns, `billetto_campaigns_${new Date().toISOString().split('T')[0]}.csv`)}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600"
+                        >
+                            <ExportIcon />
+                            <span>Export</span>
+                        </button>
+                    )}
+                </div>
                 {renderContent()}
             </div>
         </div>

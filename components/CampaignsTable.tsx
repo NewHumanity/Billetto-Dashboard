@@ -26,7 +26,6 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
     if (value === undefined || value === null) return 'N/A';
     
     if (!currencyCode || currencyCode === 'N/A') {
-        // Fallback for when currency is unknown: just format as a number.
         return (value / 100).toLocaleString('en-US', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
@@ -39,7 +38,6 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
             currency: currencyCode,
         }).format(value / 100);
     } catch (e) {
-        // Fallback for invalid currency code from API
         return `${(value / 100).toFixed(2)} ${currencyCode}`;
     }
   };
@@ -87,6 +85,7 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
               <>
                 <SortableHeader title="Generated Revenue" sortKey="generatedRevenue" className="text-right" />
                 <SortableHeader title="AOV" sortKey="averageOrderValue" className="text-right" />
+                <SortableHeader title="ROI" sortKey="roi" className="text-right" />
               </>
             )}
           </tr>
@@ -97,7 +96,7 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
             return (
                 <tr 
                     key={campaign.id} 
-                    className={`group md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50 transition-colors`}
+                    className={`group md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50 transition-colors cursor-pointer`}
                     onClick={() => onSelectCampaign(campaign.id)}
                     onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectCampaign(campaign.id)}
                     tabIndex={0}
@@ -115,7 +114,7 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
                     </td>
                     <td data-label="Discount" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-slate-900 dark:text-white">{campaign.discountDisplay}</td>
                     <td data-label="Total Orders" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4 justify-end">
                             <span>{campaign.usageCount.toLocaleString()}</span>
                             {isClickable && (
                                 <span className="flex-shrink-0 text-xs font-semibold text-brand-primary/90 dark:text-brand-primary/80 md:opacity-0 md:group-hover:opacity-100 transition-opacity">[Details]</span>
@@ -126,6 +125,15 @@ const CampaignsTable: React.FC<CampaignsTableProps> = ({ campaigns, requestSort,
                       <>
                         <td data-label="Generated Revenue" className="whitespace-nowrap py-4 px-4 text-sm text-green-600 dark:text-green-400 font-semibold">{formatCurrency(campaign.generatedRevenue, campaign.currency)}</td>
                         <td data-label="AOV" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300 font-semibold">{formatCurrency(campaign.averageOrderValue, campaign.currency)}</td>
+                        <td data-label="ROI" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-right">
+                          {(() => {
+                            if (campaign.roi === undefined || campaign.roi === null) {
+                              return <span className="text-slate-500 dark:text-slate-400">N/A</span>;
+                            }
+                            const roiColor = campaign.roi > 100 ? 'text-green-600 dark:text-green-400' : campaign.roi > 0 ? 'text-yellow-600 dark:text-yellow-500' : 'text-red-600 dark:text-red-400';
+                            return <span className={roiColor}>{campaign.roi.toFixed(1)}%</span>;
+                          })()}
+                        </td>
                       </>
                     )}
                 </tr>

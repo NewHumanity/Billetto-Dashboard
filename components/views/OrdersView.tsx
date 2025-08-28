@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { useOrders, OrderFilters } from '../../hooks/useOrders';
+import { OrderFilters } from '../../hooks/useOrders';
 import RefreshBar from '../RefreshBar';
 import Loader from '../Loader';
 import ErrorMessage from '../ErrorMessage';
 import OrdersTable from '../OrdersTable';
 import Pagination from '../Pagination';
-import { FilterIcon } from '../icons';
+import { FilterIcon, ExportIcon } from '../icons';
 import { AppContext } from '../../contexts/AppContext';
+import OrderDetailsView from '../modal_views/OrderDetailsView';
+import { exportToCsv } from '../../utils/export';
 
 const ORDERS_PER_PAGE = 100;
 
@@ -17,7 +19,7 @@ const OrdersView: React.FC = () => {
     const {
         sortedOrders, loadingOrders, ordersError, lastUpdatedOrders,
         refreshOrders, ordersPagination, handleOrderPageChange,
-        setOrderDetailsModalId,
+        setModalView,
         requestOrderSort, orderSortConfig,
         events, filters, applyFilters
     } = context;
@@ -47,6 +49,13 @@ const OrdersView: React.FC = () => {
         applyFilters(clearedFilters);
         setShowFilters(false);
     };
+
+    const handleSelectOrder = (orderId: string) => {
+        setModalView({
+            title: `Order ${orderId.substring(0, 8)}...`,
+            content: (props) => <OrderDetailsView {...props} orderId={orderId} />
+        });
+    };
     
     const hasActiveFilters = filters.event || filters.q;
 
@@ -56,14 +65,23 @@ const OrdersView: React.FC = () => {
             <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
                     <h2 className="text-xl font-semibold text-slate-900 dark:text-white">All Orders</h2>
-                    <button 
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${hasActiveFilters ? 'bg-brand-primary text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
-                        aria-expanded={showFilters}
-                    >
-                        <FilterIcon />
-                        <span>Filters {hasActiveFilters ? `(Active)` : ''}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => exportToCsv(sortedOrders, `billetto_orders_page_${ordersPagination.currentPage}_${new Date().toISOString().split('T')[0]}.csv`)}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600"
+                        >
+                            <ExportIcon />
+                            <span>Export Page</span>
+                        </button>
+                        <button 
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${hasActiveFilters ? 'bg-brand-primary text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+                            aria-expanded={showFilters}
+                        >
+                            <FilterIcon />
+                            <span>Filters {hasActiveFilters ? `(Active)` : ''}</span>
+                        </button>
+                    </div>
                 </div>
 
                 {showFilters && (
@@ -109,7 +127,7 @@ const OrdersView: React.FC = () => {
                     <>
                         <OrdersTable 
                             orders={sortedOrders} 
-                            onSelectOrder={setOrderDetailsModalId}
+                            onSelectOrder={handleSelectOrder}
                             requestSort={requestOrderSort}
                             sortConfig={orderSortConfig} 
                             currentPage={ordersPagination.currentPage}

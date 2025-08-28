@@ -28,6 +28,7 @@ const DashboardView: React.FC = () => {
         availableQuestions,
         filterQuestionId, setFilterQuestionId,
         filterAnswerText, setFilterAnswerText,
+        filteredAttendees,
         filteredAttendeesCount,
         theme,
         apiClient
@@ -136,6 +137,7 @@ const DashboardView: React.FC = () => {
                 onSetFilterQuestionId={setFilterQuestionId}
                 filterAnswerText={filterAnswerText}
                 onSetFilterAnswerText={setFilterAnswerText}
+                filteredAttendees={filteredAttendees}
                 filteredAttendeesCount={filteredAttendeesCount}
                 theme={theme}
             />

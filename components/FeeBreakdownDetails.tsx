@@ -22,16 +22,17 @@ const formatSubtype = (subtype: string) => {
 const FeeBreakdownDetails: React.FC<FeeBreakdownDetailsProps> = ({ feeEntries, currency }) => {
     
     const { breakdown, totalFees } = React.useMemo(() => {
-        const breakdownData = feeEntries.reduce((acc, entry) => {
+        // Fix: Explicitly type the accumulator in the reducer to ensure correct type inference.
+        const breakdown = feeEntries.reduce((acc: Record<string, number>, entry) => {
             const subtype = entry.entry_subtype || 'uncategorized';
             // Fees are negative, so use Math.abs
             acc[subtype] = (acc[subtype] || 0) + Math.abs(entry.amount); 
             return acc;
-        }, {} as Record<string, number>);
+        }, {});
         
-        const total = Object.values(breakdownData).reduce((sum, val) => sum + val, 0);
+        const total = Object.values(breakdown).reduce((sum, val) => sum + val, 0);
         
-        return { breakdown: breakdownData, totalFees: total };
+        return { breakdown, totalFees: total };
     }, [feeEntries]);
 
     const chartData = Object.entries(breakdown)

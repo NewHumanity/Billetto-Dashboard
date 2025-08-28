@@ -12,7 +12,7 @@ interface BarChartProps {
   showValues?: boolean;
   showPercentages?: boolean;
   height?: 'compact' | 'normal' | 'tall';
-  colorScheme?: 'blue' | 'green' | 'purple' | 'gradient' | 'auto';
+  colorScheme?: 'blue' | 'green' | 'purple' | 'red' | 'gradient' | 'auto';
   sortBy?: 'value' | 'name' | 'none';
   sortOrder?: 'asc' | 'desc';
   emptyMessage?: string;
@@ -67,6 +67,8 @@ const SimpleBarChart: React.FC<BarChartProps> = ({
         return 'bg-green-500 hover:bg-green-400';
       case 'purple':
         return 'bg-purple-500 hover:bg-purple-400';
+      case 'red':
+        return 'bg-red-500 hover:bg-red-400';
       case 'gradient':
         return 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-400 hover:to-purple-400';
       case 'auto':

@@ -253,11 +253,6 @@ const BookingQuestionsAnalysis: React.FC<BookingQuestionsAnalysisProps> = ({ det
                         <option value="all">All Ticket Types</option>
                         {details.ticketGroups.map(tg => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
                     </select>
-                     {filterTicketGroupId !== 'all' && (
-                        <p className="text-xs text-yellow-500 dark:text-yellow-400/80 mt-1">
-                            Note: Filtering only shows answers from order-scoped questions.
-                        </p>
-                    )}
                 </div>
                 <button onClick={() => onTriggerAnalysis(true)} className="bg-brand-primary/80 hover:bg-brand-primary text-white font-semibold py-2 px-4 rounded-lg transition-colors">
                     Re-Analyze Data

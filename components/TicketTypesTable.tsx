@@ -51,17 +51,6 @@ const TicketTypesTable: React.FC<TicketTypesTableProps> = ({ ticketGroups, curre
       currency: currencyCode,
     }).format(value / 100);
   };
-
-  const formatDateRange = (starts: string | null, ends: string | null) => {
-    if (!starts && !ends) return <span className="text-slate-500 dark:text-slate-400 italic">Always on sale</span>;
-    
-    const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-GB', { month: 'short', day: 'numeric', year: '2-digit' });
-
-    if (!starts && ends) return `Ends ${formatDate(ends)}`;
-    if (starts && !ends) return `Starts ${formatDate(starts)}`;
-    
-    return `${formatDate(starts!)} - ${formatDate(ends!)}`;
-  };
   
   const stateColorMap: { [key: string]: string } = {
     on_sale: 'bg-green-100 dark:bg-green-500/20 text-green-800 dark:text-green-400',
@@ -86,6 +75,8 @@ const TicketTypesTable: React.FC<TicketTypesTableProps> = ({ ticketGroups, curre
     );
   };
 
+  const hasAnalysisData = ticketGroups.length > 0 && typeof ticketGroups[0].netRevenue !== 'undefined';
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full responsive-table">
@@ -93,33 +84,61 @@ const TicketTypesTable: React.FC<TicketTypesTableProps> = ({ ticketGroups, curre
           <tr>
             <SortableHeader title="Name" sortKey="name" className="w-1/4" />
             <SortableHeader title="Status" sortKey="state" />
-            <SortableHeader title="Sale Period" sortKey="sells_from" />
             <SortableHeader title="Sales" sortKey="sold_count" className="w-1/3" />
-            <SortableHeader title="Price" sortKey="price" className="text-right"/>
-            <SortableHeader title="Revenue" sortKey="revenue" className="text-right" />
+            <SortableHeader title="Gross Rev" sortKey="revenue" className="text-right" />
+            {hasAnalysisData && (
+                <>
+                    <SortableHeader title="Est. Fees" sortKey="estimatedFees" className="text-right" />
+                    <SortableHeader title="Net Rev" sortKey="netRevenue" className="text-right" />
+                    <SortableHeader title="Margin" sortKey="profitMargin" className="text-right" />
+                </>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700">
-          {ticketGroups.map((ticketGroup) => (
-            <tr key={ticketGroup.id} className="md:hover:bg-gray-50 dark:md:hover:bg-slate-700/50 transition-colors">
-              <td data-label="Name" className="py-4 px-4 font-semibold text-slate-900 dark:text-white truncate">{ticketGroup.name}</td>
-              <td data-label="Status" className="whitespace-nowrap py-4 px-4 text-sm">
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${stateColorMap[ticketGroup.state || ''] || ''}`}>
-                  {(ticketGroup.state || '').replace('_', ' ')}
-                </span>
-              </td>
-              <td data-label="Sale Period" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">
-                {formatDateRange(ticketGroup.sells_from, ticketGroup.sells_to)}
-              </td>
-              <td data-label="Sales" className="py-4 px-4">
-                <SalesProgress sold={ticketGroup.sold_count || 0} quantity={ticketGroup.quantity} />
-              </td>
-              <td data-label="Price" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{formatCurrency(ticketGroup.price, currency)}</td>
-              <td data-label="Revenue" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-slate-900 dark:text-white">
-                {formatCurrency(ticketGroup.revenue ?? 0, currency)}
-              </td>
-            </tr>
-          ))}
+          {ticketGroups.map((ticketGroup) => {
+             const margin = ticketGroup.profitMargin;
+             let marginColor = 'text-slate-500 dark:text-slate-400';
+             if (margin !== undefined && margin !== null) {
+                 if (margin > 75) marginColor = 'text-green-600 dark:text-green-400';
+                 else if (margin > 25) marginColor = 'text-yellow-600 dark:text-yellow-500';
+                 else marginColor = 'text-red-600 dark:text-red-400';
+             }
+
+            return (
+                <tr key={ticketGroup.id} className="md:hover:bg-gray-50 dark:md:hover:bg-slate-700/50 transition-colors">
+                  <td data-label="Name" className="py-4 px-4 font-semibold text-slate-900 dark:text-white truncate">{ticketGroup.name}</td>
+                  <td data-label="Status" className="whitespace-nowrap py-4 px-4 text-sm">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${stateColorMap[ticketGroup.state || ''] || ''}`}>
+                      {(ticketGroup.state || '').replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td data-label="Sales" className="py-4 px-4">
+                    <SalesProgress sold={ticketGroup.sold_count || 0} quantity={ticketGroup.quantity} />
+                  </td>
+                  <td data-label="Gross Rev" className="whitespace-nowrap py-4 px-4 text-sm font-semibold text-slate-900 dark:text-white text-right">
+                    {formatCurrency(ticketGroup.revenue ?? 0, currency)}
+                  </td>
+                  {hasAnalysisData && (
+                    <>
+                        <td data-label="Est. Fees" className="whitespace-nowrap py-4 px-4 text-sm text-right text-red-500 dark:text-red-400">
+                           ({formatCurrency(ticketGroup.estimatedFees ?? 0, currency)})
+                        </td>
+                        <td data-label="Net Rev" className="whitespace-nowrap py-4 px-4 text-sm font-bold text-right text-slate-900 dark:text-white">
+                           {formatCurrency(ticketGroup.netRevenue ?? 0, currency)}
+                        </td>
+                        <td data-label="Margin" className="whitespace-nowrap py-4 px-4 text-sm font-bold text-right">
+                           {margin !== undefined && margin !== null ? (
+                                <span className={marginColor}>{margin.toFixed(1)}%</span>
+                            ) : (
+                                <span className="text-slate-500 dark:text-slate-400">N/A</span>
+                            )}
+                        </td>
+                    </>
+                  )}
+                </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>

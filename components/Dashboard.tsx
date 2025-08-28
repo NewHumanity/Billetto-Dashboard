@@ -1,23 +1,25 @@
-
-import React, { useState } from 'react';
-import { EventDetails, Attendee, TicketGroup, SortConfig, AvailableQuestion } from '../types';
+import React, { useState, useContext, useMemo } from 'react';
+import { EventDetails, Attendee, TicketGroup, SortConfig, AvailableQuestion, GeographicSaleData } from '../types';
 import StatCard from './StatCard';
 import AttendeesTable from './EventsTable';
 import Pagination from './Pagination';
 import TicketTypesTable from './TicketTypesTable';
-import { CalendarIcon, TicketIcon, CurrencyIcon, TicketGroupIcon, UserIcon, FeeIcon, NetPayoutIcon, ExternalLinkIcon, QuestionIcon, CopyIcon, LedgerIcon, CalculatorIcon, MarketingIcon, NewsletterIcon, GlobeIcon, SearchIcon, XCircleIcon, RefundIcon, ChargebackIcon, OrganizationIcon, LocationIcon } from './icons';
+import { CalendarIcon, TicketIcon, CurrencyIcon, TicketGroupIcon, UserIcon, FeeIcon, NetPayoutIcon, ExternalLinkIcon, QuestionIcon, CopyIcon, LedgerIcon, CalculatorIcon, MarketingIcon, NewsletterIcon, GlobeIcon, SearchIcon, XCircleIcon, RefundIcon, ChargebackIcon, OrganizationIcon, LocationIcon, CheckCircleIcon, ChevronDownIcon, ExportIcon, TargetGroupIcon, PuzzleIcon, ClipboardListIcon, ClockIcon } from './icons';
 import SalesVelocityChart from './SalesVelocityChart';
 import SalesChannelChart from './SalesChannelChart';
 import RevenueAttributionChart from './RevenueAttributionChart';
 import BookingQuestionsAnalysis from './BookingQuestionsAnalysis';
 import Loader from './Loader';
 import { StatCardSkeleton, ChartSkeleton, TableSkeleton } from './Skeleton';
-import DetailsModal from './DetailsModal';
 import LedgerDetailTable from './modal_tables/LedgerDetailTable';
 import OrdersDetailTable from './modal_tables/OrdersDetailTable';
 import AttendeesDetailTable from './modal_tables/AttendeesDetailTable';
 import { Theme } from '../../App';
 import FeeBreakdownDetails from './FeeBreakdownDetails';
+import { AppContext } from '../contexts/AppContext';
+import SimpleBarChart from './EventsChart';
+import { exportToCsv } from '../utils/export';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 
 interface DashboardProps {
@@ -26,8 +28,8 @@ interface DashboardProps {
     attendeePage: number;
     attendeesPerPage: number;
     onAttendeePageChange: (page: number) => void;
-    activeSubView: 'overview' | 'attendees' | 'bookingQuestions' | 'marketing';
-    onSetSubView: (view: 'overview' | 'attendees' | 'bookingQuestions' | 'marketing') => void;
+    activeSubView: 'overview' | 'attendees' | 'bookingQuestions' | 'marketing' | 'checkin';
+    onSetSubView: (view: 'overview' | 'attendees' | 'bookingQuestions' | 'marketing' | 'checkin') => void;
     requestAttendeeSort: (key: keyof Attendee | string) => void;
     attendeeSortConfig: SortConfig<Attendee> | null;
     requestTicketGroupSort: (key: keyof TicketGroup | string) => void;
@@ -41,6 +43,7 @@ interface DashboardProps {
     onSetFilterQuestionId: (id: string) => void;
     filterAnswerText: string;
     onSetFilterAnswerText: (text: string) => void;
+    filteredAttendees: Attendee[];
     filteredAttendeesCount: number;
     theme: Theme;
 }
@@ -66,15 +69,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     onSetFilterQuestionId,
     filterAnswerText,
     onSetFilterAnswerText,
+    filteredAttendees,
     filteredAttendeesCount,
     theme,
 }) => {
   const { event, attendees, ticketGroups, stats, financialSummary, salesByChannel, salesVelocity, revenueBySource, bookingQuestionsAnalysis, allOrders, salesByCity, salesByCountry, allLedgerEntries } = details;
   const { totalTicketsSold, currency } = stats;
+  const { setModalView } = useContext(AppContext)!;
 
   const [idCopied, setIdCopied] = useState(false);
-  const [modalContent, setModalContent] = useState<{ title: string; content: React.ReactNode } | null>(null);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [isTicketTypesExpanded, setIsTicketTypesExpanded] = useState(false);
+  const [geoFilterTicketGroupId, setGeoFilterTicketGroupId] = useState<string>('all');
 
   const handleCopy = (text: string) => {
     if (idCopied) return;
@@ -125,6 +131,41 @@ const Dashboard: React.FC<DashboardProps> = ({
   const descriptionHtml = editorial && typeof editorial === 'object' ? editorial.description_html || editorial.description : null;
   const descriptionText = editorial && typeof editorial === 'object' ? editorial.description : null;
   const isLongDescription = descriptionText && descriptionText.length > 250;
+  
+  const filteredGeoData = useMemo(() => {
+    const createFilteredList = (data: GeographicSaleData[] | undefined) => {
+        if (!data) return [];
+        if (geoFilterTicketGroupId === 'all') {
+            return data.map(item => ({ name: item.name, count: item.totalCount }))
+                       .sort((a, b) => b.count - a.count);
+        }
+        return data
+            .map(item => ({ name: item.name, count: item.countByTicketType[geoFilterTicketGroupId] || 0 }))
+            .filter(item => item.count > 0)
+            .sort((a, b) => b.count - a.count);
+    };
+    
+    return {
+        cities: createFilteredList(salesByCity),
+        countries: createFilteredList(salesByCountry),
+    };
+  }, [salesByCity, salesByCountry, geoFilterTicketGroupId]);
+  
+  const isDarkMode = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const axisColor = isDarkMode ? '#A0AEC0' : '#4A5568';
+  const gridColor = isDarkMode ? '#4A5568' : '#E2E8F0';
+
+  const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="p-3 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg">
+                <p className="label text-sm text-slate-600 dark:text-slate-300">{`${payload[0].payload.daysBeforeDeadline} days before deadline`}</p>
+                <p className="intro text-slate-900 dark:text-white font-semibold">{`Tickets Sold: ${payload[0].value.toLocaleString()}`}</p>
+            </div>
+        );
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -216,33 +257,41 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Sub-navigation Tabs */}
         <div className="border-b border-gray-200 dark:border-slate-700">
-            <nav className="-mb-px flex space-x-2" aria-label="Tabs" role="tablist">
-                <TabButton 
-                    label="Overview"
-                    isActive={activeSubView === 'overview'}
-                    onClick={() => onSetSubView('overview')}
-                    icon={<CalendarIcon/>}
-                />
-                 <TabButton 
-                    label="Attendees"
-                    count={totalTicketsSold}
-                    isActive={activeSubView === 'attendees'}
-                    onClick={() => onSetSubView('attendees')}
-                    icon={<UserIcon/>}
-                />
-                <TabButton 
-                    label="Booking Questions"
-                    isActive={activeSubView === 'bookingQuestions'}
-                    onClick={() => onSetSubView('bookingQuestions')}
-                    icon={<QuestionIcon/>}
-                />
-                <TabButton 
-                    label="Marketing"
-                    isActive={activeSubView === 'marketing'}
-                    onClick={() => onSetSubView('marketing')}
-                    icon={<MarketingIcon/>}
-                />
-            </nav>
+            <div className="overflow-x-auto hide-scrollbar">
+                <nav className="-mb-px flex" aria-label="Tabs" role="tablist">
+                    <TabButton 
+                        label="Overview"
+                        isActive={activeSubView === 'overview'}
+                        onClick={() => onSetSubView('overview')}
+                        icon={<CalendarIcon/>}
+                    />
+                     <TabButton 
+                        label="Attendees"
+                        count={totalTicketsSold}
+                        isActive={activeSubView === 'attendees'}
+                        onClick={() => onSetSubView('attendees')}
+                        icon={<UserIcon/>}
+                    />
+                    <TabButton 
+                        label="Booking Questions"
+                        isActive={activeSubView === 'bookingQuestions'}
+                        onClick={() => onSetSubView('bookingQuestions')}
+                        icon={<QuestionIcon/>}
+                    />
+                    <TabButton 
+                        label="Check-in Analytics"
+                        isActive={activeSubView === 'checkin'}
+                        onClick={() => onSetSubView('checkin')}
+                        icon={<CheckCircleIcon/>}
+                    />
+                    <TabButton 
+                        label="Marketing"
+                        isActive={activeSubView === 'marketing'}
+                        onClick={() => onSetSubView('marketing')}
+                        icon={<MarketingIcon/>}
+                    />
+                </nav>
+            </div>
         </div>
         
         {activeSubView === 'overview' && (
@@ -262,14 +311,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </>
                     ) : financialSummary ? (
                         <>
-                            <StatCard title="Gross Revenue" value={formatCurrency(financialSummary.grossRevenue, currency)} icon={<CurrencyIcon />} onClick={() => setModalContent({ title: 'Gross Revenue Details', content: <LedgerDetailTable entries={allLedgerEntries?.filter(e => e.entry_type === 'ORDER_REVENUE') || []} /> })} />
-                            <StatCard title="Billetto Fees" value={formatCurrency(financialSummary.billettoFees, currency)} icon={<FeeIcon />} onClick={() => setModalContent({ title: 'Billetto Fees Breakdown', content: <FeeBreakdownDetails feeEntries={allLedgerEntries?.filter(e => e.entry_type.includes('FEE')) || []} currency={currency} /> })} />
-                            <StatCard title="Total Refunded" value={formatCurrency(Math.abs(financialSummary.totalRefunded || 0), currency)} icon={<RefundIcon />} onClick={() => setModalContent({ title: 'Refund Details', content: <LedgerDetailTable entries={allLedgerEntries?.filter(e => e.entry_type === 'REFUND') || []} /> })} />
-                            <StatCard title="Chargebacks" value={formatCurrency(Math.abs(financialSummary.totalChargebacks || 0), currency)} icon={<ChargebackIcon />} onClick={() => setModalContent({ title: 'Chargeback Details', content: <LedgerDetailTable entries={allLedgerEntries?.filter(e => e.entry_type === 'CHARGEBACK') || []} /> })} />
-                            <StatCard title="Net Payout" value={formatCurrency(financialSummary.netPayout, currency)} icon={<NetPayoutIcon />} onClick={() => setModalContent({ title: 'Net Payout Calculation (All Ledger Entries)', content: <LedgerDetailTable entries={allLedgerEntries || []} /> })} />
-                            <StatCard title="Total Tickets Sold" value={(totalTicketsSold || 0).toLocaleString()} icon={<TicketIcon />} onClick={() => setModalContent({ title: `All Attendees (${(details.allAttendees || []).length})`, content: <AttendeesDetailTable attendees={details.allAttendees || []} currency={currency} /> })} />
-                            <StatCard title="Number of Orders" value={numberOfOrders.toLocaleString()} icon={<LedgerIcon />} onClick={() => setModalContent({ title: `All Orders (${(details.allOrders || []).length})`, content: <OrdersDetailTable orders={details.allOrders || []} /> })} />
-                            <StatCard title="Avg. Order Value" value={formatCurrency(averageOrderValue, currency)} icon={<CalculatorIcon />} onClick={() => setModalContent({ title: 'All Orders (for Avg. Value Calculation)', content: <OrdersDetailTable orders={details.allOrders || []} /> })} />
+                            <StatCard title="Gross Revenue" value={formatCurrency(financialSummary.grossRevenue, currency)} icon={<CurrencyIcon />} onClick={() => setModalView({ title: 'Gross Revenue Details', content: (props) => <LedgerDetailTable {...props} entries={allLedgerEntries?.filter(e => e.entry_type === 'ORDER_REVENUE') || []} /> })} />
+                            <StatCard title="Billetto Fees" value={formatCurrency(financialSummary.billettoFees, currency)} icon={<FeeIcon />} onClick={() => setModalView({ title: 'Billetto Fees Breakdown', content: (props) => <FeeBreakdownDetails {...props} feeEntries={allLedgerEntries?.filter(e => e.entry_type.includes('FEE')) || []} currency={currency} /> })} />
+                            <StatCard title="Total Refunded" value={formatCurrency(Math.abs(financialSummary.totalRefunded || 0), currency)} icon={<RefundIcon />} onClick={() => setModalView({ title: 'Refund Details', content: (props) => <LedgerDetailTable {...props} entries={allLedgerEntries?.filter(e => e.entry_type === 'REFUND') || []} /> })} />
+                            <StatCard title="Chargebacks" value={formatCurrency(Math.abs(financialSummary.totalChargebacks || 0), currency)} icon={<ChargebackIcon />} onClick={() => setModalView({ title: 'Chargeback Details', content: (props) => <LedgerDetailTable {...props} entries={allLedgerEntries?.filter(e => e.entry_type === 'CHARGEBACK') || []} /> })} />
+                            <StatCard title="Net Payout" value={formatCurrency(financialSummary.netPayout, currency)} icon={<NetPayoutIcon />} onClick={() => setModalView({ title: 'Net Payout Calculation (All Ledger Entries)', content: (props) => <LedgerDetailTable {...props} entries={allLedgerEntries || []} /> })} />
+                            <StatCard title="Total Tickets Sold" value={(totalTicketsSold || 0).toLocaleString()} icon={<TicketIcon />} onClick={() => setModalView({ title: `All Attendees (${(details.allAttendees || []).length})`, content: (props) => <AttendeesDetailTable {...props} attendees={details.allAttendees || []} currency={currency} /> })} />
+                            <StatCard title="Number of Orders" value={numberOfOrders.toLocaleString()} icon={<LedgerIcon />} onClick={() => setModalView({ title: `All Orders (${(details.allOrders || []).length})`, content: (props) => <OrdersDetailTable {...props} orders={details.allOrders || []} /> })} />
+                            <StatCard title="Avg. Order Value" value={formatCurrency(averageOrderValue, currency)} icon={<CalculatorIcon />} onClick={() => setModalView({ title: 'All Orders (for Avg. Value Calculation)', content: (props) => <OrdersDetailTable {...props} orders={details.allOrders || []} /> })} />
                         </>
                     ) : (
                         <>
@@ -291,14 +340,50 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </>
                 ) : (
                     <>
-                        {/* Sales Velocity Chart */}
-                        {salesVelocity && salesVelocity.length > 0 && (
+                        {/* Refund Analysis */}
+                        {details.refundAnalysis && details.refundAnalysis.length > 0 && (
                             <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                                <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Sales Velocity</h3>
-                                <SalesVelocityChart data={salesVelocity} theme={theme} />
+                                <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
+                                    <ClipboardListIcon />
+                                    <span className="ml-2">Refund & Cancellation Analysis</span>
+                                </h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                                    This analysis shows the reasons provided for refunded tickets, helping you identify trends. Reasons are attributed on a per-ticket basis.
+                                </p>
+                                <SimpleBarChart
+                                    data={details.refundAnalysis.map(d => ({ text: (d.reason || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), count: d.count }))}
+                                    sortBy="value"
+                                    colorScheme="red"
+                                    showValues={true}
+                                    showPercentages={true}
+                                />
                             </div>
                         )}
                         
+                        {/* Sales Velocity Chart */}
+                        {salesVelocity && salesVelocity.length > 0 && (
+                            <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                                <SalesVelocityChart data={salesVelocity} theme={theme} campaigns={details.activeCampaigns} />
+                            </div>
+                        )}
+                        
+                        {/* Purchase Lead Time Chart */}
+                        {details.purchaseLeadTime && details.purchaseLeadTime.some(d => d.tickets > 0) && (
+                            <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                                <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
+                                    <CalendarIcon />
+                                    <span className="ml-2">Purchase Lead Time</span>
+                                </h3>
+                                <SimpleBarChart
+                                    data={details.purchaseLeadTime.map(d => ({ text: d.name, count: d.tickets }))}
+                                    sortBy="none" // Data is pre-sorted
+                                    colorScheme="purple"
+                                    showValues={true}
+                                    showPercentages={true}
+                                />
+                            </div>
+                        )}
+
                         {/* Bottom row: Sales Channels, Attribution & Ticket Types */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             {salesByChannel && salesByChannel.length > 0 && (
@@ -316,16 +401,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         {ticketGroups && ticketGroups.length > 0 && (
                             <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg mt-8">
-                                <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
-                                    <TicketGroupIcon />
-                                    <span className="ml-2">Ticket Types</span>
-                                </h3>
-                                <TicketTypesTable 
-                                    ticketGroups={ticketGroups} 
-                                    currency={currency} 
-                                    requestSort={requestTicketGroupSort}
-                                    sortConfig={ticketGroupSortConfig}
-                                />
+                                <button
+                                    className="w-full flex justify-between items-center text-left md:pointer-events-none"
+                                    onClick={() => setIsTicketTypesExpanded(prev => !prev)}
+                                    aria-expanded={isTicketTypesExpanded}
+                                    aria-controls="ticket-types-content"
+                                >
+                                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center">
+                                        <TicketGroupIcon />
+                                        <span className="ml-2">Ticket Types</span>
+                                    </h3>
+                                    <ChevronDownIcon className={`w-6 h-6 text-slate-500 dark:text-slate-400 transition-transform duration-300 md:hidden ${isTicketTypesExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                                <div id="ticket-types-content" className={`${isTicketTypesExpanded ? 'block mt-4' : 'hidden'} md:block md:mt-4`}>
+                                    <TicketTypesTable 
+                                        ticketGroups={ticketGroups} 
+                                        currency={currency} 
+                                        requestSort={requestTicketGroupSort}
+                                        sortConfig={ticketGroupSortConfig}
+                                    />
+                                </div>
                             </div>
                         )}
                     </>
@@ -335,12 +430,21 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         {activeSubView === 'attendees' && (
             <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg animate-fade-in" role="tabpanel">
-                <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
-                    Attendees {hasActiveAttendeeFilter 
-                        ? `(${(filteredAttendeesCount || 0).toLocaleString()} of ${(stats.totalTicketsSold || 0).toLocaleString()})`
-                        : `(${(stats.totalTicketsSold || 0).toLocaleString()})`
-                    }
-                </h3>
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                        Attendees {hasActiveAttendeeFilter 
+                            ? `(${(filteredAttendeesCount || 0).toLocaleString()} of ${(stats.totalTicketsSold || 0).toLocaleString()})`
+                            : `(${(stats.totalTicketsSold || 0).toLocaleString()})`
+                        }
+                    </h3>
+                    <button
+                        onClick={() => exportToCsv(filteredAttendees, `${event.name.replace(/ /g, '_')}_attendees_${new Date().toISOString().split('T')[0]}.csv`)}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+                    >
+                        <ExportIcon />
+                        Export
+                    </button>
+                </div>
 
                 <div className="bg-gray-100 dark:bg-slate-900/50 p-4 rounded-lg mb-6 space-y-4 md:space-y-0 md:flex md:items-end md:gap-4">
                     <div className="flex-1 min-w-0">
@@ -410,6 +514,92 @@ const Dashboard: React.FC<DashboardProps> = ({
             />
         )}
 
+        {activeSubView === 'checkin' && (
+            <div className="space-y-8 animate-fade-in" role="tabpanel">
+                {loading ? (
+                    <div className="flex flex-col gap-8">
+                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                            <StatCardSkeleton />
+                            <StatCardSkeleton />
+                            <StatCardSkeleton />
+                            <StatCardSkeleton />
+                        </div>
+                        <ChartSkeleton />
+                        <TableSkeleton />
+                    </div>
+                ) : !details.checkinAnalytics ? (
+                    <div className="text-center p-8 bg-white dark:bg-slate-800 rounded-lg shadow-lg border-2 border-dashed border-gray-300 dark:border-slate-700">
+                        <div className="flex justify-center mb-4 text-slate-400 dark:text-slate-500"><CheckCircleIcon /></div>
+                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white">No Check-in Data Found</h3>
+                        <p className="mt-2 text-slate-500 dark:text-slate-400 max-w-md mx-auto">Scanning data is required for this analysis. Ensure you are scanning tickets at your event to see arrival patterns and scanning issues.</p>
+                    </div>
+                ) : (
+                    (() => {
+                        const analytics = details.checkinAnalytics;
+                        const totalScans = analytics.totalAcceptedScans + analytics.totalRejectedScans;
+                        const rejectionRate = totalScans > 0 ? (analytics.totalRejectedScans / totalScans) * 100 : 0;
+                        
+                        return (
+                            <>
+                                {/* Stat Cards */}
+                                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                                    <StatCard title="Accepted Scans" value={analytics.totalAcceptedScans.toLocaleString()} icon={<CheckCircleIcon />} />
+                                    <StatCard title="Rejected Scans" value={analytics.totalRejectedScans.toLocaleString()} icon={<XCircleIcon />} />
+                                    <StatCard title="Rejection Rate" value={`${rejectionRate.toFixed(1)}%`} icon={<FeeIcon />} />
+                                    <StatCard title="Peak Arrival" value={analytics.peakTime || 'N/A'} icon={<CalendarIcon />} />
+                                </div>
+                                
+                                {/* Arrival Chart */}
+                                {analytics.arrivalData.length > 0 ? (
+                                    <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Arrival Times (Scans per 15 min)</h3>
+                                        <SimpleBarChart 
+                                            data={analytics.arrivalData.map(d => ({ text: d.time, count: d.count }))} 
+                                            sortBy="none" 
+                                            colorScheme="green"
+                                            showValues={true}
+                                        />
+                                    </div>
+                                ) : null}
+        
+                                {/* Rejected Scans Table */}
+                                <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Rejected Scans Log</h3>
+                                    {analytics.rejectedScans.length > 0 ? (
+                                        <div className="overflow-x-auto max-h-96">
+                                            <table className="min-w-full responsive-table">
+                                                <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
+                                                    <tr>
+                                                        <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Time</th>
+                                                        <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Attendee</th>
+                                                        <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Message</th>
+                                                        <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Scanner</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700">
+                                                    {analytics.rejectedScans.slice(0, 50).map((scan, index) => (
+                                                        <tr key={index}>
+                                                            <td data-label="Time" className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">{scan.time}</td>
+                                                            <td data-label="Attendee" className="py-2 px-4 text-sm font-medium text-slate-900 dark:text-white">{scan.attendeeName}</td>
+                                                            <td data-label="Message" className="py-2 px-4 text-sm text-red-500 dark:text-red-400">{scan.message}</td>
+                                                            <td data-label="Scanner" className="py-2 px-4 text-sm text-slate-500 dark:text-slate-400">{scan.scannerName || 'N/A'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                            {analytics.rejectedScans.length > 50 && <p className="text-xs text-center text-slate-500 pt-2">Showing first 50 rejected scans.</p>}
+                                        </div>
+                                    ) : (
+                                        <p className="text-slate-500 dark:text-slate-400 text-center py-8">No rejected scans recorded.</p>
+                                    )}
+                                </div>
+                            </>
+                        );
+                    })()
+                )}
+            </div>
+        )}
+
         {activeSubView === 'marketing' && (
             <div className="space-y-8 animate-fade-in" role="tabpanel">
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -420,70 +610,182 @@ const Dashboard: React.FC<DashboardProps> = ({
                     />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {details.groupPurchaseAnalysis && details.groupPurchaseAnalysis.length > 0 && (
                     <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                         <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
-                            <GlobeIcon />
-                            <span className="ml-2">Sales by Country</span>
+                            <TargetGroupIcon />
+                            <span className="ml-2">"Bring-a-Friend" Index</span>
                         </h3>
-                        {(!salesByCountry || salesByCountry.length === 0) ? (
-                            <p className="text-slate-500 dark:text-slate-400 text-center py-8">No location data available for this event.</p>
-                        ) : (
-                            <div className="overflow-x-auto max-h-96">
-                                <table className="min-w-full">
-                                    <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
-                                    <tr>
-                                        <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Country</th>
-                                        <th className="py-2 px-4 text-right text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Tickets Sold</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                                    {salesByCountry.map(c => (
-                                        <tr key={c.name}>
-                                        <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300">{c.name}</td>
-                                        <td className="py-2 px-4 text-sm text-slate-900 dark:text-white font-medium text-right">{c.count.toLocaleString()}</td>
-                                        </tr>
-                                    ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                            This chart shows the number of orders based on how many admission tickets were purchased together. A high number of orders with 2+ tickets suggests strong social attendance.
+                        </p>
+                        <SimpleBarChart
+                            data={details.groupPurchaseAnalysis}
+                            sortBy="none"
+                            colorScheme="purple"
+                            showValues={true}
+                            showPercentages={true}
+                        />
                     </div>
+                )}
+
+                {details.addonAffinity && details.addonAffinity.length > 0 && (
                     <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                         <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
-                            <GlobeIcon />
-                            <span className="ml-2">Top 10 Cities by Sales</span>
+                            <PuzzleIcon />
+                            <span className="ml-2">Add-on & Merchandise Affinity</span>
                         </h3>
-                         {(!salesByCity || salesByCity.length === 0) ? (
-                            <p className="text-slate-500 dark:text-slate-400 text-center py-8">No city data available for this event.</p>
-                        ) : (
-                            <div className="overflow-x-auto max-h-96">
-                                <table className="min-w-full">
-                                    <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
-                                    <tr>
-                                        <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">City</th>
-                                        <th className="py-2 px-4 text-right text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Tickets Sold</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                                    {salesByCity.slice(0, 10).map(c => (
-                                        <tr key={c.name}>
-                                        <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300">{c.name}</td>
-                                        <td className="py-2 px-4 text-sm text-slate-900 dark:text-white font-medium text-right">{c.count.toLocaleString()}</td>
-                                        </tr>
-                                    ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                            See which add-ons are most popular with buyers of specific admission tickets. Use these insights for targeted upselling opportunities.
+                        </p>
+                        <div className="space-y-6">
+                            {details.addonAffinity.map(affinity => (
+                                <div key={affinity.admissionTicketName} className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg border border-gray-200 dark:border-slate-700/50">
+                                    <h4 className="font-bold text-slate-800 dark:text-slate-200">{affinity.admissionTicketName}</h4>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Total Sold: {affinity.totalAdmissionTicketsSold.toLocaleString()}</p>
+                                    <ul className="space-y-3">
+                                        {affinity.topAddons.map(addon => (
+                                            <li key={addon.addonName}>
+                                                <div className="flex justify-between items-center text-sm mb-1 flex-wrap gap-x-2">
+                                                    <span className="font-semibold text-slate-700 dark:text-slate-300">{addon.addonName}</span>
+                                                    <span className="text-slate-500 dark:text-slate-400 text-xs font-medium">{addon.purchaseCount.toLocaleString()} purchases ({addon.affinity.toFixed(1)}% affinity)</span>
+                                                </div>
+                                                <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                                                    <div className="bg-teal-500 h-2 rounded-full" style={{ width: `${addon.affinity}%` }}></div>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {details.deadlineUrgency && details.deadlineUrgency.length > 0 && (
+                    <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
+                            <ClockIcon />
+                            <span className="ml-2">"Deadline Urgency" Impact</span>
+                        </h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                            This analysis tracks sales for ticket types with a specific sales deadline. Spikes in the final days indicate effective "last chance" marketing.
+                        </p>
+                        <div className="space-y-8">
+                            {details.deadlineUrgency.map(item => (
+                                <div key={item.ticketTypeName}>
+                                    <h4 className="font-bold text-slate-800 dark:text-slate-200">{item.ticketTypeName}</h4>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                                        Sales ended {new Date(item.sellsToDate).toLocaleDateString()}. Total in last 8 days: {item.totalTicketsInWindow.toLocaleString()}
+                                    </p>
+                                    <div className="w-full h-48">
+                                        <ResponsiveContainer>
+                                            <LineChart data={item.salesData} margin={{ top: 5, right: 20, left: -10, bottom: 20 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                                                <XAxis 
+                                                    dataKey="daysBeforeDeadline"
+                                                    stroke={axisColor}
+                                                    tick={{ fontSize: 10 }}
+                                                    label={{ value: 'Days Before Deadline', position: 'insideBottom', offset: -15, fill: axisColor, fontSize: 12 }}
+                                                    reversed={true}
+                                                />
+                                                <YAxis 
+                                                    stroke={axisColor}
+                                                    allowDecimals={false}
+                                                    tick={{ fontSize: 10 }}
+                                                />
+                                                <Tooltip content={<CustomTooltip />} />
+                                                <Line 
+                                                    type="monotone" 
+                                                    dataKey="ticketsSold" 
+                                                    name="Tickets Sold"
+                                                    stroke="#ED8936" // orange color
+                                                    strokeWidth={2} 
+                                                    dot={{ r: 3 }}
+                                                    activeDot={{ r: 6 }}
+                                                />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                    <div className="flex items-center gap-4 mb-4 flex-wrap">
+                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center">
+                            <GlobeIcon />
+                            <span className="ml-2">Geographic Hotspots</span>
+                        </h3>
+                        <select
+                            id="geo-ticket-type-filter"
+                            value={geoFilterTicketGroupId}
+                            onChange={(e) => setGeoFilterTicketGroupId(e.target.value)}
+                            disabled={ticketGroups.length === 0}
+                            className="ml-auto bg-gray-50 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-md p-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:opacity-50"
+                            aria-label="Filter geographic data by ticket type"
+                        >
+                            <option value="all">All Ticket Types</option>
+                            {ticketGroups.map(tg => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">Sales by Country</h3>
+                            {(!filteredGeoData.countries || filteredGeoData.countries.length === 0) ? (
+                                <p className="text-slate-500 dark:text-slate-400 text-center py-8">No location data available for this selection.</p>
+                            ) : (
+                                <div className="overflow-x-auto max-h-96">
+                                    <table className="min-w-full">
+                                        <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
+                                            <tr>
+                                                <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Country</th>
+                                                <th className="py-2 px-4 text-right text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Tickets Sold</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                                            {filteredGeoData.countries.map(c => (
+                                                <tr key={c.name}>
+                                                    <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300">{c.name}</td>
+                                                    <td className="py-2 px-4 text-sm text-slate-900 dark:text-white font-medium text-right">{c.count.toLocaleString()}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                        <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">Top 10 Cities by Sales</h3>
+                            {(!filteredGeoData.cities || filteredGeoData.cities.length === 0) ? (
+                                <p className="text-slate-500 dark:text-slate-400 text-center py-8">No city data available for this selection.</p>
+                            ) : (
+                                <div className="overflow-x-auto max-h-96">
+                                    <table className="min-w-full">
+                                        <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
+                                            <tr>
+                                                <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">City</th>
+                                                <th className="py-2 px-4 text-right text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Tickets Sold</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                                            {filteredGeoData.cities.slice(0, 10).map(c => (
+                                                <tr key={c.name}>
+                                                    <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300">{c.name}</td>
+                                                    <td className="py-2 px-4 text-sm text-slate-900 dark:text-white font-medium text-right">{c.count.toLocaleString()}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
-        )}
-        {modalContent && (
-            <DetailsModal title={modalContent.title} onClose={() => setModalContent(null)}>
-                {modalContent.content}
-            </DetailsModal>
         )}
     </div>
   );

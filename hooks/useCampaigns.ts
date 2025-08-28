@@ -1,4 +1,5 @@
 
+
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Campaign, Order, LedgerEntry, ProcessedCampaign } from '../types';
 import { BillettoApiClient, BillettoApiError, BillettoErrorType } from '../services/billettoService';
@@ -34,7 +35,8 @@ const processCampaign = (campaign: Campaign): ProcessedCampaign => {
     discountDisplay,
     discountValueForSort,
     usageCount: campaign.applications_count,
-    usageLimit: firstEffect?.usage_limit ?? null,
+    // FIX: Correctly access usage_limit from the 'data' property of the campaign effect.
+    usageLimit: discountEffectData?.usage_limit ?? null,
   };
 };
 
@@ -97,13 +99,14 @@ export const useCampaigns = (apiClient: BillettoApiClient | null) => {
                         netRevenue: 0,
                         averageOrderValue: 0,
                         currency: undefined,
+                        roi: undefined,
                     });
                     continue;
                 }
 
                 let campaignOrders: Order[] = [];
                 try {
-                    campaignOrders = await fetchAllPaginatedData<Order>(`/campaigns/${campaign.id}/orders`, apiClient);
+                    campaignOrders = await fetchAllPaginatedData<Order>(`/campaigns/${campaign.id}/orders?expand=order_lines`, apiClient);
                 } catch (e) {
                     if (e instanceof BillettoApiError && e.type === BillettoErrorType.NOT_FOUND) {
                         console.warn(`Campaign ${campaign.id} (${campaign.name}) seems to have no orders endpoint or is invalid. Assuming 0 orders.`);
@@ -117,21 +120,39 @@ export const useCampaigns = (apiClient: BillettoApiClient | null) => {
                 let generatedRevenue = 0;
                 let totalDiscounts = 0;
                 let totalPayout = 0;
+                const ticketPerformance: { [key: string]: number } = {};
 
                 for (const order of campaignOrders) {
                     const orderLedger = ledgerMapByOrder.get(order.id);
+                    let hasDiscount = false;
                     if (orderLedger) {
                         for (const entry of orderLedger) {
                             if (entry.entry_type === 'ORDER_REVENUE') generatedRevenue += entry.amount;
-                            if (entry.entry_type === 'DISCOUNTS') totalDiscounts += entry.amount;
+                            if (entry.entry_type === 'DISCOUNTS') {
+                                totalDiscounts += entry.amount;
+                                hasDiscount = true;
+                            }
                         }
                     }
                     totalPayout += order.payout;
+
+                    if (hasDiscount) {
+                        order.order_lines.data.forEach(line => {
+                            ticketPerformance[line.name] = (ticketPerformance[line.name] || 0) + line.quantity;
+                        });
+                    }
                 }
+
+                const ticketTypePerformance = Object.entries(ticketPerformance)
+                    .map(([name, count]) => ({ text: name, count }))
+                    .sort((a, b) => b.count - a.count);
 
                 const netRevenue = generatedRevenue + totalDiscounts;
                 const averageOrderValue = campaignOrders.length > 0 ? totalPayout / campaignOrders.length : 0;
                 const currency = campaignOrders[0]?.currency;
+                const investment = Math.abs(totalDiscounts);
+                // ROI is undefined if there was no investment (no discounts)
+                const roi = investment > 0 ? (netRevenue / investment) * 100 : undefined;
 
                 processedCampaignsWithFinance.push({
                     ...processCampaign(campaign),
@@ -141,6 +162,8 @@ export const useCampaigns = (apiClient: BillettoApiClient | null) => {
                     netRevenue,
                     averageOrderValue,
                     currency,
+                    roi,
+                    ticketTypePerformance: ticketTypePerformance.length > 0 ? ticketTypePerformance : undefined,
                 });
             }
 
