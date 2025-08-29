@@ -36,7 +36,7 @@
     }
   ],
   "start_url": ".",
-  "scope": "/",
+  "scope": ".",
   "display": "standalone",
   "orientation": "portrait-primary",
   "theme_color": "#1E293B",
