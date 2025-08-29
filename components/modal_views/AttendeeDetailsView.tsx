@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState } from 'react';
 import { Attendee } from '../../types';
 import Loader from '../Loader';
 import ErrorMessage from '../ErrorMessage';
-import { CalendarIcon, CurrencyIcon, TicketIcon, QuestionIcon, CheckCircleIcon, XCircleIcon, UserIcon, SparklesIcon } from '../icons';
+import { CalendarIcon, CurrencyIcon, TicketIcon, QuestionIcon, CheckCircleIcon, XCircleIcon, UserIcon, SparklesIcon, TagIcon } from '../icons';
 import { AppContext } from '../../contexts/AppContext';
 
 interface AttendeeDetailsViewProps {
@@ -23,7 +23,7 @@ const AttendeeDetailsView: React.FC<AttendeeDetailsViewProps> = ({ attendeeId, p
         setLoading(true);
         setError(null);
         try {
-            const fetchedAttendee = await apiClient.getAttendee(attendeeId, ['event', 'booking_question_responses', 'scannings', 'ticket_buyer', 'space', 'membership', 'subscription']);
+            const fetchedAttendee = await apiClient.getAttendee(attendeeId, ['event', 'booking_question_responses', 'scannings', 'ticket_buyer', 'space', 'membership', 'subscription', 'ticket_type']);
             setAttendee(fetchedAttendee);
         } catch (err: any) {
             setError(err.message || 'An unknown error occurred fetching attendee details.');
@@ -81,6 +81,13 @@ const AttendeeDetailsView: React.FC<AttendeeDetailsViewProps> = ({ attendeeId, p
                         {(attendee.state || '').replace(/_/g, ' ')}
                     </span>
                 </div>
+                {attendee.ticket_type && (
+                  <div className="flex items-center">
+                      <TagIcon />
+                      <span className="ml-3">Ticket Type:</span>
+                      <span className="ml-auto font-semibold">{typeof attendee.ticket_type === 'object' ? attendee.ticket_type.name : 'N/A'}</span>
+                  </div>
+                )}
                 <div className="flex items-center">
                     <CurrencyIcon/>
                     <span className="ml-3">Price Paid:</span>

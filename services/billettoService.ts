@@ -1,6 +1,7 @@
 
 
 import { BillettoEvent, ListResponse, Attendee, Order, LedgerEntry, Campaign, TicketGroup, TargetGroup, TargetGroupMember } from '../types';
+import { limitRequest } from './requestLimiter';
 
 // Switching to a more reliable proxy to handle fetch errors.
 const CORS_PROXY_URL = 'https://yogamela.org/billetto-proxy.php';
@@ -51,50 +52,54 @@ export class BillettoApiClient {
   }
   
   private async makeRequest(endpoint: string, timeout: number): Promise<Response> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const doFetch = async (): Promise<Response> => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const isFullUrl = endpoint.startsWith('http');
-    const targetUrl = isFullUrl ? endpoint : `${this.billettoApiBase}${endpoint}`;
+        const isFullUrl = endpoint.startsWith('http');
+        const targetUrl = isFullUrl ? endpoint : `${this.billettoApiBase}${endpoint}`;
+        
+        const requestUrl = this.useProxy ? `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}` : targetUrl;
+
+        try {
+            const response = await fetch(requestUrl, {
+                method: 'GET',
+                headers: this.getHeaders(),
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                await this.handleHttpError(response);
+            }
+
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw new BillettoApiError(`Request timeout after ${timeout}ms`, BillettoErrorType.NETWORK);
+            }
+            
+            console.error(
+                "Billetto API Request Failed:",
+                `\nRequest URL: ${requestUrl}`,
+                `\nTarget URL: ${targetUrl}`,
+                "\nError:", error,
+                this.useProxy 
+                ? `\n\nThis is often due to a CORS issue when running in a browser. The app uses the proxy '${CORS_PROXY_URL}' to bypass this, but the proxy might be down, the Billetto API might be blocking it, or the target URL might be incorrect.`
+                : "\n\nThis could be a CORS issue if running in a browser without a proxy, or a network error.",
+                "Check your network connection and the browser's developer console for more details on the failed request."
+            );
+            
+            const userMessage = "Network error. This could be due to a CORS problem, your internet connection, or the Billetto API being temporarily down. Please check the developer console for more details.";
+            throw new BillettoApiError(userMessage, BillettoErrorType.NETWORK, undefined, error);
+        }
+    };
     
-    // Correctly construct the proxy URL by appending the encoded target URL as a parameter
-    const requestUrl = this.useProxy ? `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}` : targetUrl;
-
-    try {
-      const response = await fetch(requestUrl, {
-        method: 'GET',
-        headers: this.getHeaders(),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        await this.handleHttpError(response);
-      }
-
-      return response;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new BillettoApiError(`Request timeout after ${timeout}ms`, BillettoErrorType.NETWORK);
-      }
-      
-      console.error(
-        "Billetto API Request Failed:",
-        `\nRequest URL: ${requestUrl}`,
-        `\nTarget URL: ${targetUrl}`,
-        "\nError:", error,
-        this.useProxy 
-          ? `\n\nThis is often due to a CORS issue when running in a browser. The app uses the proxy '${CORS_PROXY_URL}' to bypass this, but the proxy might be down, the Billetto API might be blocking it, or the target URL might be incorrect.`
-          : "\n\nThis could be a CORS issue if running in a browser without a proxy, or a network error.",
-        "Check your network connection and the browser's developer console for more details on the failed request."
-      );
-      
-      const userMessage = "Network error. This could be due to a CORS problem, your internet connection, or the Billetto API being temporarily down. Please check the developer console for more details.";
-      throw new BillettoApiError(userMessage, BillettoErrorType.NETWORK, undefined, error);
-    }
+    // Wrap the actual fetch logic with our global rate limiter
+    return limitRequest(doFetch);
   }
   
   private async handleHttpError(response: Response): Promise<never> {

@@ -51,7 +51,9 @@ const AttendeesView: React.FC = () => {
                             attendees={sortedAllAttendees} 
                             onSelectAttendee={handleSelectAttendee}
                             requestSort={requestAllAttendeeSort}
-                            sortConfig={allAttendeeSortConfig} 
+                            sortConfig={allAttendeeSortConfig}
+                            currentPage={allAttendeesPagination.currentPage}
+                            itemsPerPage={ALL_ATTENDEES_PER_PAGE}
                         />
                         <Pagination 
                             currentPage={allAttendeesPagination.currentPage}

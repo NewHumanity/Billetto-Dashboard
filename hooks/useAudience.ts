@@ -1,4 +1,5 @@
 
+
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { AudienceMember, Order, Attendee, LedgerEntry, BackgroundTask, RunTaskInBackgroundSignature } from '../types';
 import { BillettoApiClient } from '../services/billettoService';
@@ -7,6 +8,13 @@ import { useSortableData } from './useSortableData';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
 
 const AUDIENCE_MEMBERS_PER_PAGE = 100;
+
+// Define keys for resumable analysis cache
+const STATE_KEY = 'audience_analysis_state';
+const RAW_ORDERS_KEY = 'audience_raw_orders';
+const RAW_ATTENDEES_KEY = 'audience_raw_attendees';
+const RAW_LEDGER_KEY = 'audience_raw_ledger';
+
 
 export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackground: RunTaskInBackgroundSignature, backgroundTasks: BackgroundTask[]) => {
     const [audience, setAudience] = useState<AudienceMember[]>([]);
@@ -42,7 +50,7 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
     const performAnalysis = useCallback((forceRefresh = false) => {
         if (!apiClient || loading) return;
 
-        const analysisTask = async (updateProgress: (progress: { value: number; message: string }) => void): Promise<AudienceMember[]> => {
+        const analysisTask = async (updateProgress: (progress: { value: number; message: string }) => void, isCancelled: () => boolean): Promise<AudienceMember[]> => {
             if (!forceRefresh) {
                 const { audienceData } = await db.getAudienceCache();
                 if (audienceData) {
@@ -50,15 +58,55 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 }
             }
 
-            updateProgress({ message: 'Fetching all orders...', value: 0 });
-            const allOrders = await fetchAllPaginatedData<Order>('/orders?expand=event', apiClient, 5, p => updateProgress({ message: `Fetching orders... (${p}%)`, value: (p / 100) * 33 }));
+            // --- Resumable fetching logic ---
+            let state = await db.getAnalysisCache<{ orders: boolean, attendees: boolean, ledger: boolean }>(STATE_KEY) || { orders: false, attendees: false, ledger: false };
+            if (forceRefresh) {
+                state = { orders: false, attendees: false, ledger: false };
+                await Promise.all([
+                    db.clearAnalysisCache(RAW_ORDERS_KEY),
+                    db.clearAnalysisCache(RAW_ATTENDEES_KEY),
+                    db.clearAnalysisCache(RAW_LEDGER_KEY)
+                ]);
+            }
+            
+            let allOrders: Order[];
+            if (state.orders) {
+                allOrders = await db.getAnalysisCache(RAW_ORDERS_KEY) || [];
+                updateProgress({ message: 'Loaded cached orders.', value: 33 });
+            } else {
+                 updateProgress({ message: 'Fetching all orders...', value: 0 });
+                 allOrders = await fetchAllPaginatedData<Order>('/orders?expand=event', apiClient, 5, p => updateProgress({ message: `Fetching orders... (${p}%)`, value: (p / 100) * 33 }), isCancelled);
+                 await db.setAnalysisCache(RAW_ORDERS_KEY, allOrders);
+                 state.orders = true;
+                 await db.setAnalysisCache(STATE_KEY, state);
+            }
 
-            updateProgress({ message: 'Fetching all attendees...', value: 33 });
-            const allAttendees = await fetchAllPaginatedData<Attendee>('/attendees?expand=event', apiClient, 5, p => updateProgress({ message: `Fetching attendees... (${p}%)`, value: 33 + (p / 100) * 33 }));
+            let allAttendees: Attendee[];
+            if (state.attendees) {
+                allAttendees = await db.getAnalysisCache(RAW_ATTENDEES_KEY) || [];
+                updateProgress({ message: 'Loaded cached attendees.', value: 66 });
+            } else {
+                updateProgress({ message: 'Fetching all attendees...', value: 33 });
+                allAttendees = await fetchAllPaginatedData<Attendee>('/attendees?expand=event&sort=-created_at', apiClient, 5, p => updateProgress({ message: `Fetching attendees... (${p}%)`, value: 33 + (p / 100) * 33 }), isCancelled);
+                await db.setAnalysisCache(RAW_ATTENDEES_KEY, allAttendees);
+                state.attendees = true;
+                await db.setAnalysisCache(STATE_KEY, state);
+            }
 
-            updateProgress({ message: 'Fetching all financial records...', value: 66 });
-            const allLedgerEntries = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries', apiClient, 5, p => updateProgress({ message: `Fetching financials... (${p}%)`, value: 66 + (p / 100) * 33 }));
+            let allLedgerEntries: LedgerEntry[];
+            if (state.ledger) {
+                allLedgerEntries = await db.getAnalysisCache(RAW_LEDGER_KEY) || [];
+                updateProgress({ message: 'Loaded cached financials.', value: 99 });
+            } else {
+                updateProgress({ message: 'Fetching all financial records...', value: 66 });
+                allLedgerEntries = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries', apiClient, 5, p => updateProgress({ message: `Fetching financials... (${p}%)`, value: 66 + (p / 100) * 33 }), isCancelled);
+                await db.setAnalysisCache(RAW_LEDGER_KEY, allLedgerEntries);
+                state.ledger = true;
+                await db.setAnalysisCache(STATE_KEY, state);
+            }
 
+
+            // --- Analysis logic ---
             updateProgress({ message: 'Analyzing customer data...', value: 99 });
 
             const customerData: { [email: string]: Partial<AudienceMember> & { nameSet: Set<string> } } = {};
@@ -137,8 +185,17 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 });
             }
 
+            // --- Finalize and Cleanup ---
             await db.setAudienceCache(finalAudience);
             await db.setInKeyval('audience_last_updated', new Date());
+
+            await Promise.all([
+                db.clearAnalysisCache(STATE_KEY),
+                db.clearAnalysisCache(RAW_ORDERS_KEY),
+                db.clearAnalysisCache(RAW_ATTENDEES_KEY),
+                db.clearAnalysisCache(RAW_LEDGER_KEY)
+            ]);
+            
             return finalAudience;
         };
 
@@ -164,13 +221,11 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 if (audienceData) {
                     setAudience(audienceData);
                     if (cachedLastUpdated) setLastUpdated(new Date(cachedLastUpdated));
-                } else {
-                    performAnalysis(false);
                 }
             };
             loadInitialData();
         }
-    }, [apiClient, audience.length, performAnalysis, loading]);
+    }, [apiClient, audience.length, loading]);
 
     return {
         audience: paginatedAudience,

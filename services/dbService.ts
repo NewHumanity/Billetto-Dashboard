@@ -3,7 +3,7 @@ import { openDB, IDBPDatabase } from 'idb';
 import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee, BookingQuestionsAnalysis, AudienceMember, ProcessedCampaign, AnalyzedEvent } from '../types';
 
 const DB_NAME = 'billetto-dashboard-cache';
-const DB_VERSION = 8; // Bump version for schema change
+const DB_VERSION = 9; // Bump version for schema change
 
 const STORES = {
     KEYVAL: 'keyval',
@@ -22,6 +22,7 @@ const STORES = {
     AUDIENCE: 'audience',
     PROCESSED_CAMPAIGNS: 'processedCampaigns',
     PERFORMANCE_ANALYSIS: 'performanceAnalysis',
+    ANALYSIS_CACHE: 'analysisCache',
 };
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -90,6 +91,11 @@ const initDB = () => {
             if (oldVersion < 8) {
                 if (!db.objectStoreNames.contains(STORES.PERFORMANCE_ANALYSIS)) {
                     db.createObjectStore(STORES.PERFORMANCE_ANALYSIS);
+                }
+            }
+            if (oldVersion < 9) {
+                if (!db.objectStoreNames.contains(STORES.ANALYSIS_CACHE)) {
+                    db.createObjectStore(STORES.ANALYSIS_CACHE);
                 }
             }
         },
@@ -293,6 +299,20 @@ export const setPerformanceCache = async (analyzedEvents: AnalyzedEvent[]) => {
     const db = await initDB();
     await db.put(STORES.PERFORMANCE_ANALYSIS, analyzedEvents, 'all_analyzed_events');
     await setInKeyval('performance_last_updated', new Date());
+};
+
+// --- Resumable Analysis Helpers ---
+export const getAnalysisCache = async <T>(key: string): Promise<T | undefined> => {
+    const db = await initDB();
+    return db.get(STORES.ANALYSIS_CACHE, key);
+};
+export const setAnalysisCache = async <T>(key: string, data: T) => {
+    const db = await initDB();
+    return db.put(STORES.ANALYSIS_CACHE, data, key);
+};
+export const clearAnalysisCache = async (key: string) => {
+    const db = await initDB();
+    return db.delete(STORES.ANALYSIS_CACHE, key);
 };
 
 

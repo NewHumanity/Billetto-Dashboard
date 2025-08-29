@@ -6,6 +6,8 @@ interface AllAttendeesTableProps {
   onSelectAttendee: (attendeeId: string) => void;
   requestSort: (key: keyof Attendee | string) => void;
   sortConfig: SortConfig<Attendee> | null;
+  currentPage: number;
+  itemsPerPage: number;
 }
 
 const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }) => {
@@ -19,7 +21,7 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
     return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
 };
 
-const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSelectAttendee, requestSort, sortConfig }) => {
+const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSelectAttendee, requestSort, sortConfig, currentPage, itemsPerPage }) => {
     
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-GB', {
@@ -62,6 +64,7 @@ const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSele
       <table className="min-w-full responsive-table">
         <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0">
           <tr>
+            <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 dark:text-white">#</th>
             <SortableHeader title="Name" sortKey="name" />
             <SortableHeader title="Email" sortKey="email" />
             <SortableHeader title="Event" sortKey="event.name" />
@@ -70,7 +73,7 @@ const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSele
           </tr>
         </thead>
         <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800/50">
-          {attendees.map((attendee) => (
+          {attendees.map((attendee, index) => (
             <tr 
               key={attendee.id} 
               className="md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50 transition-colors duration-200 cursor-pointer"
@@ -79,6 +82,9 @@ const AllAttendeesTable: React.FC<AllAttendeesTableProps> = ({ attendees, onSele
               onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectAttendee(attendee.id)}
               aria-label={`View details for attendee ${attendee.name}`}
             >
+              <td data-label="#" className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-500 dark:text-slate-400">
+                {(currentPage - 1) * itemsPerPage + index + 1}
+              </td>
               <td data-label="Name" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-slate-900 dark:text-white">{attendee.name}</td>
               <td data-label="Email" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{attendee.email}</td>
               <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300 truncate max-w-xs">{(attendee.event && typeof attendee.event === 'object') ? attendee.event.name : 'N/A'}</td>

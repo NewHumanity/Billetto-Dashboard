@@ -1,10 +1,12 @@
+const CACHE_NAME = 'billetto-stats-v4';
+// VITE_BASE_PATH is now dynamic
+const path = self.location.pathname;
+const VITE_BASE_PATH = path.substring(0, path.lastIndexOf('/')); // e.g., '/app' or '' for root
 
-
-const CACHE_NAME = 'billetto-stats-v3';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
+  `${VITE_BASE_PATH}/`,
+  `${VITE_BASE_PATH}/index.html`,
+  `${VITE_BASE_PATH}/manifest.json`,
 ];
 
 self.addEventListener('install', (event) => {

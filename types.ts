@@ -1,4 +1,5 @@
 
+
 export interface ListResponse<T> {
   object: 'list';
   data: T[];
@@ -109,10 +110,45 @@ export interface Organization {
     name: string;
 }
 
-export interface Editorial {
-    description_html?: string;
+export interface GalleryItem {
+    id: string;
+    object: 'gallery_item';
+    type: 'unsplash' | 'upload';
+    original_url: string;
+    cropped_url: string;
+    position: number;
+}
+
+export interface Headliner {
+    id: string;
+    object: 'headliner';
+    name: string;
+    title?: string;
     description?: string;
+    image_url?: string;
+}
+
+export interface Editorial {
+    host?: string;
+    description?: string;
+    description_html?: string;
     tags?: string[];
+    gallery_items?: ListResponse<GalleryItem>;
+    headliners?: ListResponse<Headliner>;
+}
+
+export interface Categorisation {
+    category?: string;
+    subcategory?: string;
+    type?: string;
+}
+
+export interface Plan {
+    id: string;
+    object: 'plan';
+    name: string;
+    price: number;
+    interval: 'day' | 'week' | 'month' | 'year';
 }
 
 export interface BillettoEvent {
@@ -120,10 +156,14 @@ export interface BillettoEvent {
     object: 'event';
     name: string;
     starts_at: string;
+    ends_at?: string;
     state: string;
     currency: string;
     public_url: string;
-    parent?: BillettoEvent | string;
+    parent?: BillettoEvent | string | null;
+    kind: 'regular' | 'recurring' | 'scheduled' | 'sub_event' | 'subscription';
+    total_capacity?: number | null;
+    online_event?: boolean;
     availability?: {
         available?: number;
     };
@@ -131,6 +171,8 @@ export interface BillettoEvent {
     location?: Location | string;
     organization?: Organization | string;
     editorial?: Editorial | string;
+    categorisation?: Categorisation;
+    plans?: ListResponse<Plan>;
 }
 
 export interface EventGroup extends BillettoEvent {
@@ -143,14 +185,23 @@ export type EventListItemType = BillettoEvent | EventGroup;
 export interface TicketGroup {
     id: string;
     object: 'ticket_type';
+    uuid: string;
     name: string;
     price: number;
     state: 'on_sale' | 'sold_out' | 'off_sale' | 'hidden';
     quantity: number | null;
-    admission: boolean;
+    description?: string;
+    min_tickets_per_order?: number;
+    max_tickets_per_order?: number | null;
+    sales_period?: string;
     sells_from: string | null;
     sells_to: string | null;
+    vat_rate?: number | null;
+    admission: boolean;
+    addons?: boolean;
+    vip?: boolean;
     type?: string; // e.g., "PayTicketType", "AddonTicketType"
+    event?: string;
     // Calculated fields
     sold_count?: number;
     revenue?: number;
@@ -164,20 +215,25 @@ export interface Attendee {
     object: 'attendee';
     name: string;
     email: string;
+    photo?: string | null;
+    type?: string;
     state: string;
     price: number;
+    fee: number;
     created_at: string;
     event?: BillettoEvent | string;
     order?: string;
     booking_question_responses?: ListResponse<BookingQuestionResponse>;
     scannings?: ListResponse<Scanning>;
     ticket_buyer?: TicketBuyer | string;
+    ticket_type?: TicketGroup | string;
     space?: Space | string;
     membership?: Membership | string;
     subscription?: Subscription | string;
     newsletter_permission?: boolean;
     city?: string;
     country_code?: string;
+    phone_number?: string;
 }
 
 export interface OrderLine {
@@ -204,11 +260,36 @@ export interface OrderTransaction {
     state: 'successful' | 'failed' | string;
     payment_method: string | null;
     payment_gateway_identifier?: string;
+    payment_gateway_transaction_id?: string;
+    payment_gateway_order_id?: string;
+    sales_channel?: string;
+    revenue_channel?: string;
     terminal_name?: string;
-    created_at: string;
     amount: number;
+    refunded_amount?: number;
+    balance?: number;
+    created_at: string;
+    updated_at?: string;
+    successful_at?: string;
+    refunded_at?: string;
+    captured_at?: string;
     currency: string;
     refunds?: ListResponse<Refund>;
+}
+
+export interface Address {
+    id: string;
+    object: 'address';
+    type: 'personal' | 'company';
+    first_name?: string;
+    last_name?: string;
+    address_line_1: string;
+    address_line_2?: string;
+    city: string;
+    postal_code: string;
+    country_code: string;
+    company_name?: string;
+    company_vat_number?: string;
 }
 
 export interface Order {
@@ -217,15 +298,22 @@ export interface Order {
     created_at: string;
     buyer_name: string;
     email: string;
+    phone?: string;
+    ip?: string;
     event?: BillettoEvent | string;
     state: string;
     payout: number;
     currency: string;
     manage_url?: string;
+    sold_by?: string;
     sales_channel?: string;
+    revenue_channel?: string;
+    terminal_name?: string;
     subtotal: number;
     payment_fees: number;
     billetto_fees: number;
+    address?: Address | string;
+    subscription?: Subscription | null;
     order_lines: ListResponse<OrderLine>;
     order_transactions: ListResponse<OrderTransaction>;
     booking_question_responses?: ListResponse<BookingQuestionResponse>;
@@ -234,17 +322,26 @@ export interface Order {
 export interface LedgerEntry {
     id: string;
     object: 'ledger_entry';
+    time?: string;
     created_at: string;
     entry_type: string;
     entry_subtype?: string;
+    revenue_subtype?: string;
     event?: BillettoEvent | null;
     event_id?: string | null;
     vat: number;
+    vat_rate?: string | null;
     amount: number;
     currency: string;
     order_id?: string | number | null;
     transaction_type?: string;
+    purchase_terminal?: string;
+    terminal_name?: string;
+    cash_register_session_uuid?: string;
+    payment_gateway?: string;
+    revenue_channel?: string;
     source?: string | null;
+    medium?: string | null;
 }
 
 export interface CampaignConditionData {
@@ -263,13 +360,15 @@ export interface CampaignCondition {
 export interface CampaignEffectData {
     percentage_discount?: string;
     ticket_types?: ListResponse<{ id: string, name: string }>;
-    usage_limit?: number | null;
 }
 
 export interface CampaignEffect {
     id: string;
     type: string;
     data: CampaignEffectData;
+    usage_limit?: number | null;
+    orders_limit?: number | null;
+    order_limit?: number | null;
 }
 
 export interface Campaign {
@@ -311,6 +410,7 @@ export interface SegmentRule {
 
 export interface Segment {
     id: string;
+    object: 'segment';
     rules: SegmentRule[];
 }
 
@@ -382,7 +482,7 @@ export interface PurchaseLeadTimeData {
 }
 
 export interface FinancialSummary {
-    grossRevenue: number;
+    netRevenue: number;
     billettoFees: number;
     netPayout: number;
     totalRefunded: number;
@@ -391,7 +491,7 @@ export interface FinancialSummary {
 
 export interface EventStats {
     totalTicketsSold: number;
-    totalRevenue: number;
+    netRevenue: number;
     currency: string;
     newsletterOptInRate: number;
 }
@@ -494,12 +594,13 @@ export interface Toast {
     id: number;
     message: string;
     type: 'success' | 'error' | 'info';
+    count?: number;
 }
 
 export interface BackgroundTask {
     id: string;
     name: string;
-    status: 'running' | 'completed' | 'error';
+    status: 'running' | 'completed' | 'error' | 'cancelled';
     progress?: number;
     message?: string;
 }
@@ -507,6 +608,9 @@ export interface BackgroundTask {
 export type RunTaskInBackgroundSignature = <T>(
     id: string,
     name: string,
-    taskFn: (updateProgress: (progress: { value: number; message: string }) => void) => Promise<T>,
+    taskFn: (
+        updateProgress: (progress: { value: number; message: string }) => void,
+        isCancelled: () => boolean
+    ) => Promise<T>,
     onSuccess?: (result: T) => void
 ) => void;

@@ -32,9 +32,12 @@ export type AppContextType =
         runTaskInBackground: <T>(
             id: string,
             name: string,
-            taskFn: (updateProgress: (progress: { value: number; message: string }) => void) => Promise<T>,
+            taskFn: (updateProgress: (progress: { value: number; message: string }) => void, isCancelled: () => boolean) => Promise<T>,
             onSuccess?: (result: T) => void
         ) => void;
+        isRefreshingDetails: boolean;
+        cancelTask: (taskId: string) => void;
+        clearTask: (taskId: string) => void;
     };
 
 export const AppContext = React.createContext<AppContextType | null>(null);

@@ -1,5 +1,7 @@
 
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Routes, Route, NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { BillettoApiClient } from './services/billettoService';
 import * as db from './services/dbService';
 import SettingsForm from './components/SettingsForm';
@@ -29,6 +31,8 @@ import AttendeeDetailsView from './components/modal_views/AttendeeDetailsView';
 import CampaignDetailsView from './components/modal_views/CampaignDetailsView';
 import CustomerDetailsView from './components/modal_views/CustomerDetailsView';
 import { ToastContainer } from './components/Toast';
+import BackgroundTaskDisplay from './components/BackgroundTaskDisplay';
+import { CancellationError } from './utils/apiHelpers';
 
 export type View = 'dashboard' | 'performance' | 'orders' | 'ledger' | 'campaigns' | 'targetGroups' | 'attendees' | 'audience';
 export type Theme = 'light' | 'dark' | 'system';
@@ -40,7 +44,6 @@ const App: React.FC = () => {
     return stored !== null ? JSON.parse(stored) : true;
   });
   const [showSettings, setShowSettings] = useState<boolean>(!apiKey);
-  const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const savedState = localStorage.getItem('sidebarOpen');
     if (savedState !== null) return JSON.parse(savedState);
@@ -56,31 +59,67 @@ const App: React.FC = () => {
   // --- Toast & Background Task State ---
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+  const [cancelledTasks, setCancelledTasks] = useState(new Set<string>());
 
   const apiClient = useMemo(() => apiKey ? new BillettoApiClient(apiKey, useProxy) : null, [apiKey, useProxy]);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // --- Toast & Background Task Management ---
-  const addToast = (message: string, type: Toast['type']) => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-  };
+  const addToast = useCallback((message: string, type: Toast['type']) => {
+    setToasts(prevToasts => {
+        const existingToast = prevToasts.find(t => t.message === message && t.type === type);
+        
+        if (existingToast) {
+            return prevToasts.map(t =>
+                t.id === existingToast.id
+                    ? { ...t, count: (t.count || 1) + 1, id: Date.now() }
+                    : t
+            );
+        }
+        
+        return [...prevToasts, { id: Date.now(), message, type, count: 1 }];
+    });
+  }, []);
 
   const removeToast = (id: number) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
   
+  const cancelTask = useCallback((taskId: string) => {
+      setCancelledTasks(prev => new Set(prev).add(taskId));
+      setBackgroundTasks(prev => prev.map(task => 
+          task.id === taskId && task.status === 'running'
+              ? { ...task, status: 'cancelled', message: 'User cancelled', progress: task.progress || 0 }
+              : task
+      ));
+  }, []);
+
+  const clearTask = useCallback((taskId: string) => {
+      setBackgroundTasks(prev => prev.filter(task => task.id !== taskId));
+  }, []);
+  
   const runTaskInBackground = useCallback(async <T,>(
-    id: string,
-    name: string,
-    taskFn: (updateProgress: (progress: { value: number; message: string }) => void) => Promise<T>,
-    onSuccess?: (result: T) => void
+      id: string,
+      name: string,
+      taskFn: (updateProgress: (progress: { value: number; message: string }) => void, isCancelled: () => boolean) => Promise<T>,
+      onSuccess?: (result: T) => void
   ) => {
       if (backgroundTasks.some(task => task.id === id && task.status === 'running')) {
           addToast(`Task "${name}" is already running.`, 'info');
           return;
       }
+
+      setCancelledTasks(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+      });
       
+      const isCancelled = () => cancelledTasks.has(id);
+
       const updateProgress = (progress: { value: number, message: string }) => {
+          if (isCancelled()) return;
           setBackgroundTasks(prev => prev.map(task => 
               task.id === id ? { ...task, progress: progress.value, message: progress.message } : task
           ));
@@ -89,7 +128,11 @@ const App: React.FC = () => {
       setBackgroundTasks(prev => [...prev.filter(t => t.id !== id), { id, name, status: 'running', message: 'Starting...' }]);
 
       try {
-          const result = await taskFn(updateProgress);
+          const result = await taskFn(updateProgress, isCancelled);
+          if (isCancelled()) {
+              console.log(`Task ${id} finished but was already cancelled.`);
+              return;
+          }
           setBackgroundTasks(prev => prev.map(task => 
               task.id === id ? { ...task, status: 'completed', progress: 100, message: 'Completed' } : task
           ));
@@ -98,13 +141,18 @@ const App: React.FC = () => {
               onSuccess(result);
           }
       } catch (error: any) {
-          console.error(`Background task "${name}" failed:`, error);
-          setBackgroundTasks(prev => prev.map(task => 
-              task.id === id ? { ...task, status: 'error', message: error.message || 'An unknown error occurred' } : task
-          ));
-          addToast(`${name} failed: ${error.message || 'Unknown error'}`, 'error');
+          if (error instanceof CancellationError) {
+              console.log(`Background task "${name}" was cancelled.`);
+          } else {
+              console.error(`Background task "${name}" failed:`, error);
+              setBackgroundTasks(prev => prev.map(task => 
+                  task.id === id ? { ...task, status: 'error', message: error.message || 'An unknown error occurred' } : task
+              ));
+              addToast(`${name} failed: ${error.message || 'Unknown error'}`, 'error');
+          }
       }
-  }, [backgroundTasks]);
+  }, [backgroundTasks, addToast, cancelledTasks]);
+
 
   // --- Initialize All Hooks ---
   const eventsHook = useEvents(apiClient);
@@ -113,7 +161,6 @@ const App: React.FC = () => {
   const campaignsHook = useCampaigns(apiClient);
   const targetGroupsHook = useTargetGroups(apiClient);
   const attendeesHook = useAttendees(apiClient);
-  // FIX: Pass runTaskInBackground and backgroundTasks to hooks to break circular dependency
   const audienceHook = useAudience(apiClient, runTaskInBackground, backgroundTasks);
   const performanceHook = usePerformance(apiClient, runTaskInBackground, backgroundTasks);
 
@@ -162,8 +209,20 @@ const App: React.FC = () => {
 
   const toggleSidebar = () => setIsSidebarOpen(prev => !prev);
   
+  const viewToPathMap: Record<View, string> = {
+      dashboard: '/',
+      performance: '/performance',
+      orders: '/orders',
+      ledger: '/ledger',
+      campaigns: '/campaigns',
+      targetGroups: '/target-groups',
+      attendees: '/attendees',
+      audience: '/audience',
+  };
+
   const navigateTo = useCallback((view: View, itemId?: string) => {
-    setCurrentView(view);
+    const path = viewToPathMap[view] || '/';
+    navigate(path);
     if (itemId) {
         if (view === 'dashboard' && eventsHook.events.find(e => e.id === itemId)) {
             const eventItem = eventsHook.filteredEventListItems.find(item => item.id === itemId);
@@ -181,7 +240,7 @@ const App: React.FC = () => {
         }
     }
     setIsSearchOpen(false);
-  }, [eventsHook, targetGroupsHook]);
+  }, [navigate, eventsHook, targetGroupsHook, setModalView]);
 
   const handleSaveSettings = async (newApiKey: string, newUseProxy: boolean, newTheme: Theme) => {
     localStorage.setItem('billettoApiKey', newApiKey);
@@ -189,51 +248,64 @@ const App: React.FC = () => {
     setTheme(newTheme);
     setShowSettings(false);
     await db.clearAllCache();
-    if (currentView !== 'dashboard') {
-        setCurrentView('dashboard');
+    if (location.pathname !== '/') {
+        navigate('/');
     }
     setApiKey(newApiKey);
     setUseProxy(newUseProxy);
   };
 
-  const NavItem = ({ onClick, isActive, label, icon }: { onClick: () => void; isActive?: boolean; label: string; icon: React.ReactNode }) => (
-    <button
-      onClick={onClick}
-      className={`flex w-full text-left p-3 rounded-lg transition-colors duration-200 group
-        ${isActive ? 'bg-brand-primary/20 text-brand-primary' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'}
-        flex-col items-center justify-center 
-        ${isSidebarOpen 
-          ? 'md:flex-row md:justify-start' 
-          : 'md:flex-col md:justify-center'}
-      `}
-      aria-label={label}
-      title={isSidebarOpen ? undefined : label}
-    >
-      <div className="w-6 h-6 flex-shrink-0">{icon}</div>
-      <span className={`font-semibold 
-        mt-1 text-xs 
-        ${isSidebarOpen 
-          ? 'md:ml-3 md:mt-0 md:text-sm' 
-          : 'md:hidden'}
-      `}>
-        {label}
-      </span>
-    </button>
-  );
+  // FIX: Refactored NavItem to handle onClick events for button-like actions,
+  // rendering a <button> for semantics and accessibility, while still supporting
+  // <NavLink> for actual navigation. This resolves the TypeScript errors.
+  const NavItem = ({ to, label, icon, end = false, onClick }: { to: string; label: string; icon: React.ReactNode; end?: boolean; onClick?: () => void }) => {
+    const content = (
+      <>
+        <div className="w-6 h-6 flex-shrink-0">{icon}</div>
+        <span className={`font-semibold 
+          mt-1 text-xs 
+          ${isSidebarOpen 
+            ? 'md:ml-3 md:mt-0 md:text-sm' 
+            : 'md:hidden'}
+        `}>
+          {label}
+        </span>
+      </>
+    );
 
-  const renderContent = () => {
-    if (!apiClient) return null;
-    switch (currentView) {
-      case 'dashboard': return <DashboardView />;
-      case 'performance': return <PerformanceView />;
-      case 'orders': return <OrdersView />;
-      case 'ledger': return <LedgerView />;
-      case 'campaigns': return <CampaignsView />;
-      case 'targetGroups': return <TargetGroupsView />;
-      case 'attendees': return <AttendeesView />;
-      case 'audience': return <AudienceView />;
-      default: return <DashboardView />;
+    const commonClasses = `flex w-full text-left p-3 rounded-lg transition-colors duration-200 group
+      flex-col items-center justify-center 
+      ${isSidebarOpen 
+        ? 'md:flex-row md:justify-start' 
+        : 'md:flex-col md:justify-center'}
+    `;
+
+    if (onClick) {
+      return (
+        <button
+          onClick={onClick}
+          className={`${commonClasses} text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white`}
+          aria-label={label}
+          title={isSidebarOpen ? undefined : label}
+        >
+          {content}
+        </button>
+      );
     }
+    
+    return (
+      <NavLink
+        to={to}
+        end={end}
+        className={({isActive}) => `${commonClasses} 
+          ${isActive ? 'bg-brand-primary/20 text-brand-primary' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'}
+        `}
+        aria-label={label}
+        title={isSidebarOpen ? undefined : label}
+      >
+        {content}
+      </NavLink>
+    );
   };
 
   const appContextValue: AppContextType = {
@@ -253,10 +325,13 @@ const App: React.FC = () => {
     addToast,
     backgroundTasks,
     runTaskInBackground,
+    isRefreshingDetails: eventsHook.isRefreshingDetails,
+    cancelTask,
+    clearTask,
   };
   
-  const handleMoreNav = (view: View) => {
-    setCurrentView(view);
+  const handleMoreNav = (path: string) => {
+    navigate(path);
     setIsMoreMenuOpen(false);
   };
   
@@ -267,26 +342,32 @@ const App: React.FC = () => {
     </button>
   );
 
+  const headerTitle = useMemo(() => {
+    const path = location.pathname.split('/')[1] || 'dashboard';
+    const formatted = path.replace(/-/g, ' ');
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  }, [location.pathname]);
+
   const desktopNavigation = (
     <>
-      <NavItem onClick={() => setCurrentView('dashboard')} isActive={currentView === 'dashboard'} label="Dashboard" icon={<CalendarIcon />} />
-      <NavItem onClick={() => setCurrentView('performance')} isActive={currentView === 'performance'} label="Performance" icon={<TeacherIcon />} />
-      <NavItem onClick={() => setCurrentView('audience')} isActive={currentView === 'audience'} label="Audience" icon={<AudienceIcon />} />
-      <NavItem onClick={() => setCurrentView('orders')} isActive={currentView === 'orders'} label="Orders" icon={<TicketIcon />} />
-      <NavItem onClick={() => setCurrentView('ledger')} isActive={currentView === 'ledger'} label="Ledger" icon={<LedgerIcon />} />
-      <NavItem onClick={() => setCurrentView('campaigns')} isActive={currentView === 'campaigns'} label="Campaigns" icon={<CampaignIcon />} />
-      <NavItem onClick={() => setCurrentView('targetGroups')} isActive={currentView === 'targetGroups'} label="Target Groups" icon={<TargetGroupIcon />} />
-      <NavItem onClick={() => setCurrentView('attendees')} isActive={currentView === 'attendees'} label="Attendees" icon={<UserIcon />} />
+      <NavItem to="/" end label="Dashboard" icon={<CalendarIcon />} />
+      <NavItem to="/performance" label="Performance" icon={<TeacherIcon />} />
+      <NavItem to="/audience" label="Audience" icon={<AudienceIcon />} />
+      <NavItem to="/orders" label="Orders" icon={<TicketIcon />} />
+      <NavItem to="/ledger" label="Ledger" icon={<LedgerIcon />} />
+      <NavItem to="/campaigns" label="Campaigns" icon={<CampaignIcon />} />
+      <NavItem to="/target-groups" label="Target Groups" icon={<TargetGroupIcon />} />
+      <NavItem to="/attendees" label="Attendees" icon={<UserIcon />} />
     </>
   );
   
   const mobileNavigation = (
      <>
-        <NavItem onClick={() => setCurrentView('dashboard')} isActive={currentView === 'dashboard'} label="Dashboard" icon={<CalendarIcon />} />
-        <NavItem onClick={() => setCurrentView('audience')} isActive={currentView === 'audience'} label="Audience" icon={<AudienceIcon />} />
-        <NavItem onClick={() => setCurrentView('orders')} isActive={currentView === 'orders'} label="Orders" icon={<TicketIcon />} />
-        <NavItem onClick={() => setIsSearchOpen(true)} label="Search" icon={<SearchIcon />} />
-        <NavItem onClick={() => setIsMoreMenuOpen(true)} label="More" icon={<MenuIcon />} />
+        <NavItem to="/" end label="Dashboard" icon={<CalendarIcon />} />
+        <NavItem to="/audience" label="Audience" icon={<AudienceIcon />} />
+        <NavItem to="/orders" label="Orders" icon={<TicketIcon />} />
+        <NavItem to="#" onClick={() => setIsSearchOpen(true)} label="Search" icon={<SearchIcon />} />
+        <NavItem to="#" onClick={() => setIsMoreMenuOpen(true)} label="More" icon={<MenuIcon />} />
     </>
   );
 
@@ -297,6 +378,8 @@ const App: React.FC = () => {
         <ToastContainer toasts={toasts} onRemove={removeToast} />
         {showSettings && <SettingsForm initialApiKey={apiKey} initialUseProxy={useProxy} initialTheme={theme} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />}
         {isSearchOpen && <GlobalSearch onClose={() => setIsSearchOpen(false)} />}
+        
+        <BackgroundTaskDisplay tasks={backgroundTasks} onCancel={cancelTask} onClear={clearTask} />
 
         {isMoreMenuOpen && (
             <div onClick={() => setIsMoreMenuOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden flex items-end animate-fade-in">
@@ -306,11 +389,11 @@ const App: React.FC = () => {
                 >
                     <div className="w-12 h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full mx-auto mb-4"></div>
                     <nav className="grid grid-cols-4 gap-2">
-                         <MoreMenuNavItem onClick={() => handleMoreNav('performance')} label="Performance" icon={<TeacherIcon />} />
-                         <MoreMenuNavItem onClick={() => handleMoreNav('ledger')} label="Ledger" icon={<LedgerIcon />} />
-                         <MoreMenuNavItem onClick={() => handleMoreNav('campaigns')} label="Campaigns" icon={<CampaignIcon />} />
-                         <MoreMenuNavItem onClick={() => handleMoreNav('targetGroups')} label="Groups" icon={<TargetGroupIcon />} />
-                         <MoreMenuNavItem onClick={() => handleMoreNav('attendees')} label="Attendees" icon={<UserIcon />} />
+                         <MoreMenuNavItem onClick={() => handleMoreNav('/performance')} label="Performance" icon={<TeacherIcon />} />
+                         <MoreMenuNavItem onClick={() => handleMoreNav('/ledger')} label="Ledger" icon={<LedgerIcon />} />
+                         <MoreMenuNavItem onClick={() => handleMoreNav('/campaigns')} label="Campaigns" icon={<CampaignIcon />} />
+                         <MoreMenuNavItem onClick={() => handleMoreNav('/target-groups')} label="Groups" icon={<TargetGroupIcon />} />
+                         <MoreMenuNavItem onClick={() => handleMoreNav('/attendees')} label="Attendees" icon={<UserIcon />} />
                          <MoreMenuNavItem onClick={() => { setShowSettings(true); setIsMoreMenuOpen(false); }} label="Settings" icon={<SettingsIcon />} />
                     </nav>
                 </div>
@@ -328,15 +411,15 @@ const App: React.FC = () => {
         <div className="flex">
           <aside className={`hidden md:flex flex-col bg-white dark:bg-slate-800 p-4 min-h-screen fixed transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-60' : 'w-20'}`}>
             <div className="h-8 mb-8 flex items-center justify-center relative">
-              <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView('dashboard'); }} className={`text-slate-900 dark:text-white text-2xl font-bold whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!isSidebarOpen}>
+              <Link to="/" className={`text-slate-900 dark:text-white text-2xl font-bold whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!isSidebarOpen}>
                 Billetto<span className="text-brand-primary">Stats</span>
-              </a>
-              <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView('dashboard'); }} className={`absolute transition-opacity duration-200 ${isSidebarOpen ? 'opacity-0' : 'opacity-100'}`} aria-hidden={isSidebarOpen}>
+              </Link>
+              <Link to="/" className={`absolute transition-opacity duration-200 ${isSidebarOpen ? 'opacity-0' : 'opacity-100'}`} aria-hidden={isSidebarOpen}>
                 <TicketIcon />
-              </a>
+              </Link>
             </div>
             <nav className="flex flex-col gap-2">{desktopNavigation}</nav>
-            <div className="mt-auto"><NavItem onClick={() => setShowSettings(true)} label="Settings" icon={<SettingsIcon />} /></div>
+            <div className="mt-auto"><NavItem to="#" onClick={() => setShowSettings(true)} label="Settings" icon={<SettingsIcon />} /></div>
           </aside>
 
           <main className={`flex-1 flex flex-col p-4 sm:p-6 lg:p-8 pb-24 md:pb-8 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'md:ml-60' : 'md:ml-20'}`}>
@@ -352,7 +435,7 @@ const App: React.FC = () => {
                     <MenuIcon />
                   </button>
                   <h1 className="text-xl font-semibold text-slate-900 dark:text-white ml-4 capitalize">
-                    {currentView.replace(/([A-Z])/g, ' $1').trim()}
+                    {headerTitle}
                   </h1>
                   <div className="ml-auto">
                       <button 
@@ -371,13 +454,24 @@ const App: React.FC = () => {
                 {/* Mobile Header */}
                  <header className="md:hidden flex items-center mb-6 flex-shrink-0">
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white capitalize">
-                        {currentView.replace(/([A-Z])/g, ' $1').trim()}
+                        {headerTitle}
                     </h1>
                 </header>
               </>
             )}
             <div className="flex-grow">
-              {apiKey ? renderContent() : (
+              {apiKey ? (
+                  <Routes>
+                    <Route path="/" element={<DashboardView />} />
+                    <Route path="/performance" element={<PerformanceView />} />
+                    <Route path="/orders" element={<OrdersView />} />
+                    <Route path="/ledger" element={<LedgerView />} />
+                    <Route path="/campaigns" element={<CampaignsView />} />
+                    <Route path="/target-groups" element={<TargetGroupsView />} />
+                    <Route path="/attendees" element={<AttendeesView />} />
+                    <Route path="/audience" element={<AudienceView />} />
+                </Routes>
+              ) : (
                 <div className="flex items-center justify-center h-[calc(100vh-10rem)] rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-dashed border-gray-300 dark:border-slate-700 p-8">
                   <div className="text-center">
                     <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Welcome to BillettoStats</h2>

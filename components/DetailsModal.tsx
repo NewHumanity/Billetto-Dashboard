@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext } from 'react';
+import React, { useState, useEffect, createContext, useRef } from 'react';
 import { ModalView } from '../types';
 
 interface ModalContextType {
@@ -13,15 +13,25 @@ interface DetailsModalProps {
   onClose: () => void;
 }
 
-const DetailsModal: React.FC<DetailsModalProps> = ({ initialView, onClose }) => {
-    const [viewStack, setViewStack] = useState<ModalView[]>([initialView]);
-    const currentView = viewStack[viewStack.length - 1];
+// New type to hold view and its scroll position
+type StackItem = {
+    view: ModalView;
+    scrollTop: number;
+};
 
+
+const DetailsModal: React.FC<DetailsModalProps> = ({ initialView, onClose }) => {
+    const [viewStack, setViewStack] = useState<StackItem[]>([{ view: initialView, scrollTop: 0 }]);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    
+    const currentItem = viewStack[viewStack.length - 1];
+
+    // Reset stack when the modal is opened with a new initial view
     useEffect(() => {
-        // When the initialView prop changes (i.e., a new modal is opened), reset the stack
-        setViewStack([initialView]);
+        setViewStack([{ view: initialView, scrollTop: 0 }]);
     }, [initialView]);
 
+    // Effect for escape key and body overflow
     useEffect(() => {
         const handleEscape = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
@@ -35,6 +45,19 @@ const DetailsModal: React.FC<DetailsModalProps> = ({ initialView, onClose }) => 
             document.body.style.overflow = 'unset';
         };
     }, [onClose]);
+    
+    // Effect to restore scroll position when the current view changes
+    useEffect(() => {
+        if (scrollContainerRef.current) {
+            // Use requestAnimationFrame to ensure the DOM is ready for the scroll update
+            requestAnimationFrame(() => {
+                if(scrollContainerRef.current) {
+                    scrollContainerRef.current.scrollTop = currentItem.scrollTop;
+                }
+            });
+        }
+    }, [currentItem]);
+
 
     const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (e.target === e.currentTarget) {
@@ -43,11 +66,26 @@ const DetailsModal: React.FC<DetailsModalProps> = ({ initialView, onClose }) => 
     };
 
     const pushView = (view: ModalView) => {
-        setViewStack(stack => [...stack, view]);
+        if (scrollContainerRef.current) {
+            const currentScrollTop = scrollContainerRef.current.scrollTop;
+            setViewStack(stack => {
+                // Create a new stack to avoid mutation
+                const newStack = [...stack];
+                // Update the scrollTop of the view we are leaving
+                if (newStack.length > 0) {
+                    newStack[newStack.length - 1] = { ...newStack[newStack.length - 1], scrollTop: currentScrollTop };
+                }
+                // Add the new view with scrollTop 0
+                newStack.push({ view, scrollTop: 0 });
+                return newStack;
+            });
+        }
     };
 
     const popView = () => {
-        setViewStack(stack => stack.slice(0, stack.length - 1));
+        if (viewStack.length > 1) {
+            setViewStack(stack => stack.slice(0, stack.length - 1));
+        }
     };
 
     return (
@@ -82,11 +120,11 @@ const DetailsModal: React.FC<DetailsModalProps> = ({ initialView, onClose }) => 
                                 </svg>
                             </button>
                         )}
-                        <h2 id="details-modal-title" className="text-2xl font-bold text-slate-900 dark:text-white truncate">{currentView.title}</h2>
+                        <h2 id="details-modal-title" className="text-2xl font-bold text-slate-900 dark:text-white truncate">{currentItem.view.title}</h2>
                     </div>
 
-                    <div className="flex-grow overflow-y-auto -mr-4 pr-4">
-                        {currentView.content({ pushView })}
+                    <div ref={scrollContainerRef} className="flex-grow overflow-y-auto -mr-4 pr-4">
+                        {currentItem.view.content({ pushView })}
                     </div>
                 </div>
             </div>

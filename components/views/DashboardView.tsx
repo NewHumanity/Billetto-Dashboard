@@ -18,7 +18,7 @@ const DashboardView: React.FC = () => {
     const {
         events, loadingEvents, eventsError, lastUpdatedEvents, fetchAndCacheEvents,
         filteredEventListItems, eventFilter, setEventFilter, selectedItem, setSelectedItem,
-        finalEventDetails, loadingDetails, detailsError,
+        finalEventDetails, loadingDetails, detailsError, isRefreshingDetails,
         eventDetailView, setEventDetailView, attendeePage, setAttendeePage,
         requestEventAttendeesSort, eventAttendeesSortConfig,
         requestTicketGroupsSort, ticketGroupsSortConfig,
@@ -119,6 +119,7 @@ const DashboardView: React.FC = () => {
             <Dashboard 
                 details={finalEventDetails} 
                 loading={loadingDetails}
+                isRefreshing={isRefreshingDetails}
                 attendeePage={attendeePage} 
                 onAttendeePageChange={setAttendeePage} 
                 attendeesPerPage={ATTENDEES_PER_PAGE}

@@ -12,7 +12,7 @@ import BookingQuestionsAnalysis from './BookingQuestionsAnalysis';
 import Loader from './Loader';
 import { StatCardSkeleton, ChartSkeleton, TableSkeleton } from './Skeleton';
 import LedgerDetailTable from './modal_tables/LedgerDetailTable';
-import OrdersDetailTable from './modal_tables/OrdersDetailTable';
+import OrdersDetailTable, { GrossRevenueDetailTable } from './modal_tables/OrdersDetailTable';
 import AttendeesDetailTable from './modal_tables/AttendeesDetailTable';
 import { Theme } from '../../App';
 import FeeBreakdownDetails from './FeeBreakdownDetails';
@@ -20,11 +20,13 @@ import { AppContext } from '../contexts/AppContext';
 import SimpleBarChart from './EventsChart';
 import { exportToCsv } from '../utils/export';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import AttendeeDetailsView from './modal_views/AttendeeDetailsView';
 
 
 interface DashboardProps {
     details: EventDetails;
     loading: boolean;
+    isRefreshing: boolean;
     attendeePage: number;
     attendeesPerPage: number;
     onAttendeePageChange: (page: number) => void;
@@ -48,9 +50,26 @@ interface DashboardProps {
     theme: Theme;
 }
 
+const DetailsRefreshIndicator: React.FC<{ isRefreshing: boolean }> = ({ isRefreshing }) => {
+  if (!isRefreshing) {
+    return null;
+  }
+
+  return (
+    <div className="bg-brand-primary/10 text-brand-primary dark:bg-slate-700/50 dark:text-slate-300 text-sm font-semibold p-3 rounded-lg mb-6 flex items-center justify-center animate-fade-in">
+      <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span>Refreshing data in the background... The view will update automatically.</span>
+    </div>
+  );
+};
+
 const Dashboard: React.FC<DashboardProps> = ({ 
     details, 
     loading,
+    isRefreshing,
     attendeePage, 
     onAttendeePageChange, 
     attendeesPerPage, 
@@ -82,6 +101,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [isTicketTypesExpanded, setIsTicketTypesExpanded] = useState(false);
   const [geoFilterTicketGroupId, setGeoFilterTicketGroupId] = useState<string>('all');
 
+  const validAttendees = useMemo(() =>
+    (details.allAttendees || []).filter(a => ['sold', 'manually_generated', 'door_sale'].includes(a.state)),
+    [details.allAttendees]
+  );
+
   const handleCopy = (text: string) => {
     if (idCopied) return;
     navigator.clipboard.writeText(text);
@@ -96,6 +120,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         minimumFractionDigits: 2,
     }).format(value / 100);
   }
+
+  const handleSelectAttendee = (attendeeId: string) => {
+    const attendee = (details.allAttendees || []).find(a => a.id === attendeeId);
+    setModalView({
+        title: attendee ? attendee.name : 'Attendee Details',
+        content: (props) => <AttendeeDetailsView {...props} attendeeId={attendeeId} />
+    });
+  };
 
   const TabButton: React.FC<{
     label: string;
@@ -122,7 +154,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   
   const numberOfOrders = allOrders?.length ?? 0;
   const averageOrderValue = financialSummary && numberOfOrders > 0 
-    ? financialSummary.grossRevenue / numberOfOrders 
+    ? financialSummary.netRevenue / numberOfOrders 
     : 0;
   
   const hasActiveAttendeeFilter = filterQuestionId || filterAnswerText;
@@ -169,6 +201,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in">
+        <DetailsRefreshIndicator isRefreshing={isRefreshing} />
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg">
             <div className="flex justify-between items-start gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
@@ -298,7 +331,7 @@ const Dashboard: React.FC<DashboardProps> = ({
              <div className="space-y-8 animate-fade-in" role="tabpanel">
                 {/* Stat Cards */}
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                    {loading ? (
+                    {loading && !financialSummary ? (
                         <>
                             <StatCardSkeleton />
                             <StatCardSkeleton />
@@ -311,18 +344,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </>
                     ) : financialSummary ? (
                         <>
-                            <StatCard title="Gross Revenue" value={formatCurrency(financialSummary.grossRevenue, currency)} icon={<CurrencyIcon />} onClick={() => setModalView({ title: 'Gross Revenue Details', content: (props) => <LedgerDetailTable {...props} entries={allLedgerEntries?.filter(e => e.entry_type === 'ORDER_REVENUE') || []} /> })} />
+                            <StatCard title="Gross Revenue" value={formatCurrency(stats.netRevenue, currency)} icon={<CurrencyIcon />} onClick={() => setModalView({ title: 'Gross Revenue Details', content: (props) => <GrossRevenueDetailTable {...props} orders={allOrders || []} ledgerEntries={allLedgerEntries || []} /> })} />
                             <StatCard title="Billetto Fees" value={formatCurrency(financialSummary.billettoFees, currency)} icon={<FeeIcon />} onClick={() => setModalView({ title: 'Billetto Fees Breakdown', content: (props) => <FeeBreakdownDetails {...props} feeEntries={allLedgerEntries?.filter(e => e.entry_type.includes('FEE')) || []} currency={currency} /> })} />
                             <StatCard title="Total Refunded" value={formatCurrency(Math.abs(financialSummary.totalRefunded || 0), currency)} icon={<RefundIcon />} onClick={() => setModalView({ title: 'Refund Details', content: (props) => <LedgerDetailTable {...props} entries={allLedgerEntries?.filter(e => e.entry_type === 'REFUND') || []} /> })} />
                             <StatCard title="Chargebacks" value={formatCurrency(Math.abs(financialSummary.totalChargebacks || 0), currency)} icon={<ChargebackIcon />} onClick={() => setModalView({ title: 'Chargeback Details', content: (props) => <LedgerDetailTable {...props} entries={allLedgerEntries?.filter(e => e.entry_type === 'CHARGEBACK') || []} /> })} />
                             <StatCard title="Net Payout" value={formatCurrency(financialSummary.netPayout, currency)} icon={<NetPayoutIcon />} onClick={() => setModalView({ title: 'Net Payout Calculation (All Ledger Entries)', content: (props) => <LedgerDetailTable {...props} entries={allLedgerEntries || []} /> })} />
-                            <StatCard title="Total Tickets Sold" value={(totalTicketsSold || 0).toLocaleString()} icon={<TicketIcon />} onClick={() => setModalView({ title: `All Attendees (${(details.allAttendees || []).length})`, content: (props) => <AttendeesDetailTable {...props} attendees={details.allAttendees || []} currency={currency} /> })} />
+                            <StatCard title="Valid Tickets Sold" value={(totalTicketsSold || 0).toLocaleString()} icon={<TicketIcon />} onClick={() => setModalView({ title: `Valid Attendees (${validAttendees.length})`, content: (props) => <AttendeesDetailTable {...props} attendees={validAttendees} currency={currency} /> })} />
                             <StatCard title="Number of Orders" value={numberOfOrders.toLocaleString()} icon={<LedgerIcon />} onClick={() => setModalView({ title: `All Orders (${(details.allOrders || []).length})`, content: (props) => <OrdersDetailTable {...props} orders={details.allOrders || []} /> })} />
                             <StatCard title="Avg. Order Value" value={formatCurrency(averageOrderValue, currency)} icon={<CalculatorIcon />} onClick={() => setModalView({ title: 'All Orders (for Avg. Value Calculation)', content: (props) => <OrdersDetailTable {...props} orders={details.allOrders || []} /> })} />
                         </>
                     ) : (
                         <>
-                            <StatCard title="Total Tickets Sold" value={(totalTicketsSold || 0).toLocaleString()} icon={<TicketIcon />} />
+                            <StatCard title="Valid Tickets Sold" value={(totalTicketsSold || 0).toLocaleString()} icon={<TicketIcon />} />
                             <StatCard title="Status" value={event.state} icon={<CalendarIcon />} />
                             <StatCard title="Available Tickets" value={event.availability?.available?.toLocaleString() ?? 'N/A'} icon={<TicketGroupIcon />} />
                         </>
@@ -330,7 +363,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
                 
                 {/* Charts and Tables with Skeleton Loading */}
-                {loading ? (
+                {loading && !salesVelocity ? (
                     <>
                         <ChartSkeleton />
                         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
@@ -491,6 +524,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                     currency={currency}
                     requestSort={requestAttendeeSort}
                     sortConfig={attendeeSortConfig}
+                    onSelectAttendee={handleSelectAttendee}
+                    currentPage={attendeePage}
+                    itemsPerPage={attendeesPerPage}
                 />
                 <div className="mt-4">
                     <Pagination

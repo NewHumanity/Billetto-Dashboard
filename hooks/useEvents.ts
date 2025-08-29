@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { BillettoEvent, EventDetails, TicketGroup, Attendee, BookingQuestionsAnalysis, Order, LedgerEntry, EventGroup, EventListItemType, AvailableQuestion, SalesChannelData, CheckinAnalytics, GeographicSaleData, PurchaseLeadTimeData, Campaign, CampaignTimeBlock, AddonAffinity, RefundAnalysis, DeadlineUrgencyData } from '../types';
+import { BillettoEvent, EventDetails, TicketGroup, Attendee, BookingQuestionsAnalysis, Order, LedgerEntry, EventGroup, EventListItemType, AvailableQuestion, SalesChannelData, CheckinAnalytics, GeographicSaleData, PurchaseLeadTimeData, Campaign, CampaignTimeBlock, AddonAffinity, RefundAnalysis, DeadlineUrgencyData, FinancialSummary, EventStats } from '../types';
 import { BillettoApiClient, BillettoApiError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
@@ -208,6 +208,7 @@ const processAndBuildEventDetails = (
         }, []);
 
     let grossRevenue = 0;
+    let totalDiscounts = 0;
     let billettoFees = 0;
     let totalRefunded = 0;
     let totalChargebacks = 0;
@@ -215,17 +216,21 @@ const processAndBuildEventDetails = (
     allLedgerEntries.forEach(entry => {
         if (entry.entry_type === 'ORDER_REVENUE') {
             grossRevenue += entry.amount;
+        } else if (entry.entry_type === 'DISCOUNTS') {
+            totalDiscounts += entry.amount; // This is a negative value
         } else if (entry.entry_type.includes('FEE')) {
-            billettoFees += entry.amount; // Fees are negative
+            billettoFees += entry.amount;
         } else if (entry.entry_type === 'REFUND') {
             totalRefunded += entry.amount;
         } else if (entry.entry_type === 'CHARGEBACK') {
             totalChargebacks += entry.amount;
         }
     });
-    const netPayout = grossRevenue + billettoFees + totalRefunded + totalChargebacks;
+
+    const netRevenue = grossRevenue + totalDiscounts;
+    const netPayout = netRevenue + billettoFees + totalRefunded + totalChargebacks;
     
-    const financialSummary = { grossRevenue, billettoFees, netPayout, totalRefunded, totalChargebacks };
+    const financialSummary: FinancialSummary = { netRevenue, billettoFees, netPayout, totalRefunded, totalChargebacks };
 
     // --- Purchase Lead Time Analysis ---
     const eventStartsAt = new Date(event.starts_at).getTime();
@@ -477,9 +482,9 @@ const processAndBuildEventDetails = (
     const newsletterOptInCount = allAttendees.filter(a => a.newsletter_permission).length;
     const newsletterOptInRate = totalTicketsSold > 0 ? (newsletterOptInCount / totalTicketsSold) * 100 : 0;
 
-    const stats = {
+    const stats: EventStats = {
         totalTicketsSold,
-        totalRevenue: estimatedGrossRevenue,
+        netRevenue: netRevenue,
         currency: event.currency,
         newsletterOptInRate,
     };
@@ -519,12 +524,14 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
     const [selectedItem, setSelectedItem] = useState<EventListItemType | null>(null);
     const [eventDetails, setEventDetails] = useState<{ [key: string]: EventDetails }>({});
     const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
+    const [isRefreshingDetails, setIsRefreshingDetails] = useState<boolean>(false);
     const [detailsError, setDetailsError] = useState<string | null>(null);
     const [eventDetailView, setEventDetailView] = useState<'overview' | 'attendees' | 'bookingQuestions' | 'marketing' | 'checkin'>('overview');
     const [attendeePage, setAttendeePage] = useState(1);
     const [filterTicketGroupId, setFilterTicketGroupId] = useState<string>('all');
     const [loadingAnalysis, setLoadingAnalysis] = useState(false);
     const isFetchingDetails = useRef(false);
+    const restorationAttempted = useRef(false);
     const [loadingProgress, setLoadingProgress] = useState<{
         message?: string;
         orders?: number;
@@ -735,33 +742,36 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
     useEffect(() => {
         const fetchDetails = async () => {
             if (!selectedItem || !apiClient || isFetchingDetails.current) return;
-
-            isFetchingDetails.current = true;
-            setLoadingDetails(true);
-            setDetailsError(null);
-            setLoadingProgress({ message: 'Checking cache...' });
-
+    
+            // Immediately try to load from cache for an instant UI response.
             const cachedDetails = await db.getEventDetailsCache(selectedItem.id);
             if (cachedDetails) {
-                setEventDetails(prev => ({...prev, [selectedItem.id]: cachedDetails }));
-                setLoadingDetails(false);
-                isFetchingDetails.current = false;
-                setLoadingProgress(null);
-                return;
+                setEventDetails(prev => ({ ...prev, [selectedItem.id]: cachedDetails }));
+            } else {
+                // Only show the blocking loader if there's no cached data at all.
+                setLoadingDetails(true);
             }
-            
+    
+            // Start the full data fetch, either in the background or foreground.
+            isFetchingDetails.current = true;
+            if (cachedDetails) {
+                setIsRefreshingDetails(true); // Signal a non-blocking background refresh.
+            }
+            setDetailsError(null);
+            setLoadingProgress({ message: 'Starting data fetch...' });
+    
             try {
                 const isGroup = 'isGroup' in selectedItem;
                 const eventIds = isGroup ? selectedItem.children.map(c => c.id) : [selectedItem.id];
-
+    
                 const [allOrders, allAttendees, allLedgerEntries, ticketGroupsData, eventCampaigns] = await Promise.all([
                     Promise.all(eventIds.map(id => fetchAllPaginatedData<Order>(`/orders?event=${id}&expand=order_lines,order_transactions`, apiClient, 5, p => setLoadingProgress(prev => ({ ...prev, orders: p }))))).then(res => res.flat()),
-                    Promise.all(eventIds.map(id => fetchAllPaginatedData<Attendee>(`/events/${id}/attendees?expand=booking_question_responses,scannings`, apiClient, 5, p => setLoadingProgress(prev => ({ ...prev, attendees: p }))))).then(res => res.flat()),
+                    Promise.all(eventIds.map(id => fetchAllPaginatedData<Attendee>(`/events/${id}/attendees?expand=booking_question_responses,scannings,ticket_type`, apiClient, 5, p => setLoadingProgress(prev => ({ ...prev, attendees: p }))))).then(res => res.flat()),
                     Promise.all(eventIds.map(id => fetchAllPaginatedData<LedgerEntry>(`/ledger_entries?event=${id}`, apiClient, 5, p => setLoadingProgress(prev => ({ ...prev, ledger: p }))))).then(res => res.flat()),
                     Promise.all(eventIds.map(id => fetchAllPaginatedData<TicketGroup>(`/ticket_types?event=${id}`, apiClient, 5))).then(res => res.flat()),
                     Promise.all(eventIds.map(id => fetchAllPaginatedData<Campaign>(`/campaigns?event=${id}`, apiClient, 5))).then(res => res.flat()),
                 ]);
-
+    
                 const activeCampaigns: CampaignTimeBlock[] = eventCampaigns.flatMap(campaign => {
                     return campaign.conditions.data
                         .filter(condition => condition.type === 'time' && condition.data.start && condition.data.end)
@@ -781,7 +791,7 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
                         console.warn(`Could not fetch full event details for event ${selectedItem.id}`, e);
                     }
                 }
-
+    
                 setLoadingProgress({ message: 'Processing data...' });
                 const baseDetails = processAndBuildEventDetails(eventForProcessing, allOrders, allAttendees, allLedgerEntries, ticketGroupsData, activeCampaigns);
                 
@@ -792,19 +802,60 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
                 
                 await db.setEventDetailsCache(fullDetails);
                 setEventDetails(prev => ({ ...prev, [selectedItem.id]: fullDetails }));
-
+    
             } catch (err) {
                  if (err instanceof BillettoApiError) setDetailsError(err.message);
                  else setDetailsError('An unknown error occurred while fetching event details.');
             } finally {
                 setLoadingDetails(false);
+                setIsRefreshingDetails(false);
                 isFetchingDetails.current = false;
                 setLoadingProgress(null);
             }
         };
-
+    
         fetchDetails();
     }, [selectedItem, apiClient]);
+
+    // --- State Persistence ---
+    useEffect(() => {
+        if (selectedItem) {
+            localStorage.setItem('billettoSelectedItemId', selectedItem.id);
+        }
+    }, [selectedItem]);
+
+    useEffect(() => {
+        if (restorationAttempted.current || eventListItems.length === 0) {
+            return;
+        }
+
+        const savedId = localStorage.getItem('billettoSelectedItemId');
+        if (savedId) {
+            const findItemRecursive = (items: EventListItemType[], id: string): EventListItemType | undefined => {
+                for (const item of items) {
+                    if (item.id === id) {
+                        return item;
+                    }
+                    if ('isGroup' in item && item.children) {
+                        const foundChild = item.children.find(child => child.id === id);
+                        if (foundChild) {
+                            return foundChild;
+                        }
+                    }
+                }
+                return undefined;
+            };
+
+            const itemToSelect = findItemRecursive(eventListItems, savedId);
+
+            if (itemToSelect) {
+                setSelectedItem(itemToSelect);
+            } else {
+                localStorage.removeItem('billettoSelectedItemId');
+            }
+        }
+        restorationAttempted.current = true;
+    }, [eventListItems]);
 
     return {
         events, loadingEvents, eventsError, lastUpdatedEvents, fetchAndCacheEvents,
@@ -817,7 +868,7 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
                 ticketGroups: sortedTicketGroups
             }
         }, [finalEventDetails, sortedEventAttendees, sortedTicketGroups]),
-        loadingDetails, detailsError,
+        loadingDetails, detailsError, isRefreshingDetails,
         eventDetailView, setEventDetailView, attendeePage, setAttendeePage,
         requestEventAttendeesSort, eventAttendeesSortConfig,
         requestTicketGroupsSort: requestTicketGroupsSort, ticketGroupsSortConfig: ticketGroupsSortConfig,

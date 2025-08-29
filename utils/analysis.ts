@@ -1,6 +1,6 @@
 
 
-import { BookingQuestionResponse, BookingQuestionsAnalysis, WordCloudData, AggregatedQuestion, QuestionType, EventDetails, Attendee, Scanning } from '../types';
+import { BookingQuestionResponse, BookingQuestionsAnalysis, WordCloudData, AggregatedQuestion, QuestionType, EventDetails, Attendee, Scanning, TicketGroup } from '../types';
 
 // Simple stop words list for word cloud
 const stopWords = new Set(['i','me','my','myself','we','our','ours','ourselves','you','your','yours','yourself','yourselves','he','him','his','himself','she','her','hers','herself','it','its','itself','they','them','their','theirs','themselves','what','which','who','whom','this','that','these','those','am','is','are','was','were','be','been','being','have','has','had','having','do','does','did','doing','a','an','the','and','but','if','or','because','as','until','while','of','at','by','for','with','about','against','between','into','through','during','before','after','above','below','to','from','up','down','in','out','on','off','over','under','again','further','then','once','here','there','when','where','why','how','all','any','both','each','few','more','most','other','some','such','no','nor','not','only','own','same','so','than','too','very','s','t','can','will','just','don','should','now']);
@@ -108,23 +108,21 @@ export const runBookingQuestionsAnalysis = async ({
     let attendeesToProcess = allAttendees;
 
     if (filterTicketGroupId !== 'all') {
-        const selectedTicketGroup = ticketGroups.find(tg => tg.id === filterTicketGroupId);
-        if (selectedTicketGroup) {
-            // 1. Find all orders containing the selected ticket type.
-            const relevantOrders = allOrders.filter(order =>
-                order.order_lines.data.some(line => line.name === selectedTicketGroup.name)
-            );
-            const relevantOrderIds = new Set(relevantOrders.map(order => order.id));
+        // Use the new direct link from attendee to ticket_type for more accurate filtering.
+        attendeesToProcess = allAttendees.filter(attendee => {
+            const ticketType = attendee.ticket_type;
+            if (typeof ticketType === 'string') {
+                return ticketType === filterTicketGroupId;
+            } else if (ticketType && typeof ticketType === 'object' && 'id' in ticketType) {
+                return (ticketType as TicketGroup).id === filterTicketGroupId;
+            }
+            return false;
+        });
 
-            // 2. Filter attendees to include only those linked to the relevant orders.
-            // This allows analysis of both order-scoped and attendee-scoped questions for that segment.
-            const relevantAttendees = allAttendees.filter(attendee => 
-                attendee.order && relevantOrderIds.has(attendee.order)
-            );
-
-            ordersToProcess = relevantOrders;
-            attendeesToProcess = relevantAttendees;
-        }
+        // Filter orders to only include those associated with the filtered attendees.
+        // This is still needed for order-scoped questions.
+        const relevantOrderIds = new Set(attendeesToProcess.map(a => a.order).filter(Boolean));
+        ordersToProcess = allOrders.filter(o => relevantOrderIds.has(o.id));
     }
 
     const questionMap: { [key: string]: { name: string; answers: { [key: string]: number } } } = {};

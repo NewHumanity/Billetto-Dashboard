@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import { Attendee, SortConfig } from '../types';
 
@@ -8,6 +6,9 @@ interface AttendeesTableProps {
   currency: string;
   requestSort: (key: keyof Attendee | string) => void;
   sortConfig: SortConfig<Attendee> | null;
+  onSelectAttendee: (attendeeId: string) => void;
+  currentPage: number;
+  itemsPerPage: number;
 }
 
 const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }) => {
@@ -21,7 +22,7 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
     return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
 };
 
-const AttendeesTable: React.FC<AttendeesTableProps> = ({ attendees, currency, requestSort, sortConfig }) => {
+const AttendeesTable: React.FC<AttendeesTableProps> = ({ attendees, currency, requestSort, sortConfig, onSelectAttendee, currentPage, itemsPerPage }) => {
   const formatCurrency = (value: number, currencyCode: string) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -54,6 +55,7 @@ const AttendeesTable: React.FC<AttendeesTableProps> = ({ attendees, currency, re
       <table className="min-w-full divide-slate-200 dark:divide-slate-700 responsive-table">
         <thead className="bg-gray-50 dark:bg-slate-800/80">
           <tr>
+            <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-800 dark:text-white">#</th>
             <SortableHeader title="Name" sortKey="name" />
             <SortableHeader title="Email" sortKey="email" />
             <SortableHeader title="Status" sortKey="state" />
@@ -61,8 +63,18 @@ const AttendeesTable: React.FC<AttendeesTableProps> = ({ attendees, currency, re
           </tr>
         </thead>
         <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800/50">
-          {attendees.map((attendee) => (
-            <tr key={attendee.id} className="md:hover:bg-gray-50 dark:md:hover:bg-slate-700/50 transition-colors">
+          {attendees.map((attendee, index) => (
+            <tr
+              key={attendee.id}
+              className="md:hover:bg-gray-50 dark:md:hover:bg-slate-700/50 transition-colors cursor-pointer"
+              onClick={() => onSelectAttendee(attendee.id)}
+              tabIndex={0}
+              onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectAttendee(attendee.id)}
+              aria-label={`View details for attendee ${attendee.name}`}
+            >
+              <td data-label="#" className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-500 dark:text-slate-400">
+                {(currentPage - 1) * itemsPerPage + index + 1}
+              </td>
               <td data-label="Name" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-slate-900 dark:text-white">
                 {attendee.name}
               </td>

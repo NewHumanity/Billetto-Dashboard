@@ -35,8 +35,7 @@ const processCampaign = (campaign: Campaign): ProcessedCampaign => {
     discountDisplay,
     discountValueForSort,
     usageCount: campaign.applications_count,
-    // FIX: Correctly access usage_limit from the 'data' property of the campaign effect.
-    usageLimit: discountEffectData?.usage_limit ?? null,
+    usageLimit: firstEffect?.usage_limit ?? null,
   };
 };
 

@@ -32,7 +32,7 @@ export const useAttendees = (apiClient: BillettoApiClient | null) => {
         setLoadingAllAttendees(true);
         setAllAttendeesError(null);
         try {
-            const response = await apiClient.getAttendees(page, ALL_ATTENDEES_PER_PAGE, ['event']);
+            const response = await apiClient.getAttendees(page, ALL_ATTENDEES_PER_PAGE, ['event', 'ticket_type']);
             setAllAttendees(response.data);
             setAllAttendeesPagination({ currentPage: page, total: response.total });
             await db.setAttendeesCache(page, response);
@@ -74,7 +74,7 @@ export const useAttendees = (apiClient: BillettoApiClient | null) => {
                 return;
             }
             try {
-                const attendee = await apiClient.getAttendee(selectedAttendeeId, ['event', 'booking_question_responses', 'scannings', 'ticket_buyer', 'space', 'membership', 'subscription']);
+                const attendee = await apiClient.getAttendee(selectedAttendeeId, ['event', 'booking_question_responses', 'scannings', 'ticket_buyer', 'space', 'membership', 'subscription', 'ticket_type']);
                 setAttendeeDetails(attendee);
                 await db.setAttendeeDetailsCache(attendee);
             } catch (err) {
@@ -98,7 +98,7 @@ export const useAttendees = (apiClient: BillettoApiClient | null) => {
                 return;
             }
 
-            const data = await fetchAllPaginatedData<Attendee>('/attendees?expand=event', apiClient);
+            const data = await fetchAllPaginatedData<Attendee>('/attendees?expand=event,ticket_type', apiClient);
             setAllAttendeesForSearch(data);
             await db.setAttendeesCache(-1, { data, total: data.length } as any);
         } catch (e) {

@@ -1,14 +1,23 @@
 import { ListResponse } from '../types';
 import { BillettoApiClient, BillettoApiError, BillettoErrorType } from '../services/billettoService';
+import { pauseGlobalRequests } from '../services/requestLimiter';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export class CancellationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'CancellationError';
+    }
+}
 
 // Helper to fetch all pages from a paginated API endpoint with retry logic and progress reporting
 export const fetchAllPaginatedData = async <T>(
     initialEndpoint: string,
     apiClient: BillettoApiClient,
     maxRetries = 5,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    isCancelled?: () => boolean
 ): Promise<T[]> => {
     let allItems: T[] = [];
     const limit = 100; // Enforce max limit for all bulk fetches.
@@ -22,10 +31,14 @@ export const fetchAllPaginatedData = async <T>(
     }
     
     let retries = 0;
-    let backoffTime = 1000; // Start with 1 second for backoff
+    let backoffTime = 2000; // Start with 2 seconds for backoff
     let totalItems = 0;
 
     while (nextEndpoint) {
+        if (isCancelled && isCancelled()) {
+            throw new CancellationError('Task was cancelled by the user.');
+        }
+
         try {
             // Use the new generic method on the client to fetch an arbitrary list endpoint
             const response = await apiClient.fetchListEndpoint<T>(nextEndpoint);
@@ -55,12 +68,8 @@ export const fetchAllPaginatedData = async <T>(
 
             // Success for this page, so reset retry logic
             retries = 0;
-            backoffTime = 1000;
+            backoffTime = 2000;
 
-            // Add a conservative delay between successful requests to prevent rate limiting.
-            if (nextEndpoint) {
-                await delay(750);
-            }
         } catch (error) {
             if (error instanceof BillettoApiError && error.type === BillettoErrorType.RATE_LIMIT && retries < maxRetries) {
                 retries++;
@@ -73,14 +82,16 @@ export const fetchAllPaginatedData = async <T>(
                 if (match && match[1]) {
                     const secondsToWait = parseInt(match[1], 10);
                     waitTime = secondsToWait * 1000 + 500; // Add 500ms buffer
-                    console.warn(`Rate limit hit. API requested a wait of ${secondsToWait} seconds. Retrying in ${waitTime}ms...`);
+                    console.warn(`Rate limit hit. API requested a wait of ${secondsToWait} seconds. Pausing all requests.`);
                 } else {
-                    console.warn(`Rate limit hit on endpoint ${nextEndpoint}. Retrying in ${waitTime}ms... (Attempt ${retries}/${maxRetries})`);
+                    console.warn(`Rate limit hit on endpoint ${nextEndpoint}. Pausing all requests and backing off for ${waitTime}ms. (Attempt ${retries}/${maxRetries})`);
                     backoffTime *= 2; // Only use exponential backoff if API doesn't specify time
                 }
 
-                await delay(waitTime);
-                // Do not change nextEndpoint, the loop will retry the same one.
+                // Trigger the global pause. The next attempt in the loop will be automatically delayed.
+                pauseGlobalRequests(waitTime);
+                await delay(50); // Small delay to allow the pause state to be set before retrying.
+                
             } else {
                 // For other errors, or if max retries are exceeded, log the error and stop pagination.
                 console.error(`Failed to fetch endpoint ${nextEndpoint} after ${retries} retries. Halting pagination for this request.`, error);
