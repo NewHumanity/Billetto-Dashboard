@@ -1,14 +1,15 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { BillettoEvent, EventDetails, TicketGroup, Attendee, BookingQuestionsAnalysis, Order, LedgerEntry, EventGroup, EventListItemType, AvailableQuestion, SalesChannelData, CheckinAnalytics, GeographicSaleData, PurchaseLeadTimeData, Campaign, CampaignTimeBlock, AddonAffinity, RefundAnalysis, DeadlineUrgencyData, FinancialSummary, EventStats } from '../types';
-import { BillettoApiClient, BillettoApiError } from '../services/billettoService';
+import { BillettoApiClient, BillettoApiError, NotModifiedError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
 import { useSortableData } from './useSortableData';
 import { runBookingQuestionsAnalysis, analyzeCheckinData } from '../utils/analysis';
+// Fix: Import from types.ts to break circular dependency
+import { AddToastFn } from '../types';
 
 const ATTENDEES_PER_PAGE = 100;
 
-// This function is extracted to be reusable for both single events and aggregated group data
 const processAndBuildEventDetails = (
     event: BillettoEvent,
     allOrders: Order[],
@@ -18,7 +19,6 @@ const processAndBuildEventDetails = (
     activeCampaigns: CampaignTimeBlock[]
 ): Omit<EventDetails, 'attendees'> => {
 
-    // --- Fee Attribution Logic ---
     const orderFeesMap = new Map<string, number>();
     allLedgerEntries.forEach(entry => {
         if (entry.order_id && entry.entry_type.includes('FEE')) {
@@ -53,7 +53,6 @@ const processAndBuildEventDetails = (
         }
     });
 
-    // --- Ticket Group Calculation (including new financial data) ---
     const soldCountsByName: { [name: string]: number } = {};
     allOrders.forEach(order => {
         order.order_lines.data.forEach(line => {
@@ -98,7 +97,6 @@ const processAndBuildEventDetails = (
 
     const estimatedGrossRevenue = ticketGroupsWithCalculatedRevenue.reduce((sum, tg) => sum + (tg.revenue || 0), 0);
     
-    // Hierarchical Sales Channel Breakdown
     const salesMap: { [key: string]: { count: number; children: { [key: string]: { count: number } } } } = {};
     allOrders.forEach(order => {
         const channel = (order.sales_channel || 'unknown').replace(/_/g, ' ');
@@ -142,7 +140,6 @@ const processAndBuildEventDetails = (
     })
     .sort((a, b) => b.count - a.count);
 
-    // --- GEOGRAPHIC ANALYSIS LOGIC ---
     const orderToTicketTypeIdsMap = new Map<string, string[]>();
     allOrders.forEach(order => {
         const ticketTypeIdsInOrder = order.order_lines.data
@@ -217,7 +214,7 @@ const processAndBuildEventDetails = (
         if (entry.entry_type === 'ORDER_REVENUE') {
             grossRevenue += entry.amount;
         } else if (entry.entry_type === 'DISCOUNTS') {
-            totalDiscounts += entry.amount; // This is a negative value
+            totalDiscounts += entry.amount;
         } else if (entry.entry_type.includes('FEE')) {
             billettoFees += entry.amount;
         } else if (entry.entry_type === 'REFUND') {
@@ -232,7 +229,6 @@ const processAndBuildEventDetails = (
     
     const financialSummary: FinancialSummary = { netRevenue, billettoFees, netPayout, totalRefunded, totalChargebacks };
 
-    // --- Purchase Lead Time Analysis ---
     const eventStartsAt = new Date(event.starts_at).getTime();
     const leadTimeBuckets = {
         'Last 24 Hours': { tickets: 0, sortOrder: 1 },
@@ -249,7 +245,7 @@ const processAndBuildEventDetails = (
 
         const leadTimeDays = (eventStartsAt - orderCreatedAt) / (1000 * 60 * 60 * 24);
         
-        if (leadTimeDays < 0) return; // Ignore purchases made after event start
+        if (leadTimeDays < 0) return;
 
         const ticketCountInOrder = order.order_lines.data.reduce((sum, line) => sum + line.quantity, 0);
 
@@ -272,7 +268,6 @@ const processAndBuildEventDetails = (
         .map(([name, data]) => ({ name, tickets: data.tickets, sortOrder: data.sortOrder }))
         .sort((a, b) => a.sortOrder - b.sortOrder);
 
-    // --- Group Purchase Behavior Analysis ---
     const admissionTicketTypeNames = new Set(ticketGroupsData.filter(tg => tg.admission).map(tg => tg.name));
 
     const orderTicketCounts: { [orderId: string]: number } = {};
@@ -304,9 +299,8 @@ const processAndBuildEventDetails = (
 
     const groupPurchaseAnalysis = Object.entries(groupSizeCounts)
         .map(([text, count]) => ({ text, count }))
-        .filter(item => item.count > 0); // Only show buckets with orders
+        .filter(item => item.count > 0);
 
-    // --- Add-on Affinity Analysis ---
     const ticketGroupsMap = new Map(ticketGroupsData.map(tg => [tg.id, tg]));
     const admissionTicketTypeIds = new Set(ticketGroupsData.filter(tg => tg.admission).map(tg => tg.id));
     const addonTicketTypeIds = new Set(ticketGroupsData.filter(tg => !tg.admission).map(tg => tg.id));
@@ -377,7 +371,6 @@ const processAndBuildEventDetails = (
         addonAffinity.sort((a, b) => b.totalAdmissionTicketsSold - a.totalAdmissionTicketsSold);
     }
     
-    // --- Refund/Cancellation Root Cause Analysis ---
     const orderToRefundReasons = new Map<string, string[]>();
     allOrders.forEach(order => {
         const reasons: string[] = [];
@@ -396,7 +389,6 @@ const processAndBuildEventDetails = (
         if (attendee.state === 'refunded' && attendee.order) {
             const reasons = orderToRefundReasons.get(attendee.order);
             if (reasons && reasons.length > 0) {
-                // Simplification: attribute the refund to the first reason found for the order.
                 const reason = reasons[0]; 
                 refundReasonCounts[reason] = (refundReasonCounts[reason] || 0) + 1;
             }
@@ -407,10 +399,9 @@ const processAndBuildEventDetails = (
         .map(([reason, count]) => ({ reason, count }))
         .sort((a, b) => b.count - a.count);
         
-    // --- Deadline Urgency Analysis ---
     const deadlineUrgency: DeadlineUrgencyData[] = [];
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
+    today.setHours(0, 0, 0, 0);
 
     const ticketGroupsWithDeadlines = ticketGroupsData.filter(
         tg => tg.sells_to && new Date(tg.sells_to) < today
@@ -419,9 +410,8 @@ const processAndBuildEventDetails = (
     if (ticketGroupsWithDeadlines.length > 0) {
         ticketGroupsWithDeadlines.forEach(tg => {
             const sellsToDate = new Date(tg.sells_to!);
-            sellsToDate.setHours(23, 59, 59, 999); // Ensure we capture the full day
+            sellsToDate.setHours(23, 59, 59, 999);
             
-            // Initialize sales data for the last 8 days (0-7)
             const salesByDay = new Map<number, number>();
             for(let i=0; i<=7; i++) {
                 salesByDay.set(i, 0);
@@ -462,7 +452,7 @@ const processAndBuildEventDetails = (
                             daysBeforeDeadline,
                         };
                     })
-                    .sort((a, b) => b.daysBeforeDeadline - a.daysBeforeDeadline); // Sort from 7 down to 0
+                    .sort((a, b) => b.daysBeforeDeadline - a.daysBeforeDeadline);
 
                 deadlineUrgency.push({
                     ticketTypeName: tg.name,
@@ -472,7 +462,6 @@ const processAndBuildEventDetails = (
                 });
             }
         });
-        // Sort the entire analysis by which ticket type had the most urgent sales
         deadlineUrgency.sort((a, b) => b.totalTicketsInWindow - a.totalTicketsInWindow);
     }
 
@@ -515,7 +504,7 @@ const processAndBuildEventDetails = (
     };
 };
 
-export const useEvents = (apiClient: BillettoApiClient | null) => {
+export const useEvents = (apiClient: BillettoApiClient | null, addToast: AddToastFn) => {
     const [events, setEvents] = useState<BillettoEvent[]>([]);
     const [loadingEvents, setLoadingEvents] = useState<boolean>(true);
     const [eventsError, setEventsError] = useState<string | null>(null);
@@ -529,8 +518,11 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
     const [eventDetailView, setEventDetailView] = useState<'overview' | 'attendees' | 'bookingQuestions' | 'marketing' | 'checkin'>('overview');
     const [attendeePage, setAttendeePage] = useState(1);
     const [filterTicketGroupId, setFilterTicketGroupId] = useState<string>('all');
+    // FIX: Define missing state variables for attendee filtering
+    const [filterQuestionId, setFilterQuestionId] = useState<string>('');
+    const [filterAnswerText, setFilterAnswerText] = useState<string>('');
     const [loadingAnalysis, setLoadingAnalysis] = useState(false);
-    const isFetchingDetails = useRef(false);
+    const isFetchingDetails = useRef(new Set<string>());
     const restorationAttempted = useRef(false);
     const [loadingProgress, setLoadingProgress] = useState<{
         message?: string;
@@ -539,346 +531,312 @@ export const useEvents = (apiClient: BillettoApiClient | null) => {
         ledger?: number;
     } | null>(null);
 
+    const onRateLimit = useCallback((message: string) => {
+        addToast(message, 'info');
+    }, [addToast]);
+
     const fetchAndCacheEvents = useCallback(async () => {
         if (!apiClient) return;
         setLoadingEvents(true);
         setEventsError(null);
         try {
-            const allEvents = await fetchAllPaginatedData<BillettoEvent>('/events?sort=-starts_at', apiClient);
+            const allEvents = await fetchAllPaginatedData<BillettoEvent>('/events?sort=-starts_at', apiClient, 5, undefined, undefined, onRateLimit);
             setEvents(allEvents);
+            // Fix: Pass the fetched data, not the type, to the cache function
             await db.setEventsCache(allEvents);
             setLastUpdatedEvents(new Date());
         } catch (err) {
-            if (err instanceof BillettoApiError) setEventsError(err.message);
-            else setEventsError('An unknown error occurred while fetching events.');
+            if (err instanceof NotModifiedError) {
+                addToast('Events list is up to date.', 'info');
+                setLastUpdatedEvents(new Date());
+            } else if (err instanceof BillettoApiError) {
+                setEventsError(err.message);
+            } else if (err instanceof Error && err.name !== 'CancellationError') {
+                setEventsError('An unknown error occurred while fetching events.');
+            }
         } finally {
             setLoadingEvents(false);
         }
-    }, [apiClient]);
+    }, [apiClient, onRateLimit, addToast]);
+// Fix: Add prefetchEventDetails function to handle pre-fetching on hover in EventListItem.
+    const fetchEventDetails = useCallback(async (eventId: string, force = false) => {
+        if (!apiClient || isFetchingDetails.current.has(eventId)) return;
 
+        const setLoading = force ? setLoadingDetails : setIsRefreshingDetails;
+        setLoading(true);
+        setDetailsError(null);
+        setLoadingProgress(null);
+        isFetchingDetails.current.add(eventId);
+
+        try {
+            if (!force) {
+                const cachedDetails = await db.getEventDetailsCache(eventId);
+                if (cachedDetails) {
+                    setEventDetails(prev => ({ ...prev, [eventId]: cachedDetails }));
+                    // Don't return here, proceed to refresh in the background
+                }
+            }
+            
+            const event = events.find(e => e.id === eventId) || await apiClient.getEvent(eventId);
+            if (!event) { throw new Error("Event not found"); }
+
+            const fetchAndUpdateProgress = async <T extends {id: string}>(
+                key: 'orders' | 'attendees' | 'ledger',
+                endpoint: string
+            ): Promise<T[]> => {
+                const onProgress = (p: number) => {
+                    setLoadingProgress(prev => ({ ...prev, [key]: p }));
+                };
+                return fetchAllPaginatedData<T>(endpoint, apiClient, 5, onProgress, undefined, onRateLimit);
+            };
+
+            const [allOrders, allAttendees, allLedgerEntries, ticketGroupsData, campaignsData] = await Promise.all([
+                fetchAndUpdateProgress<Order>('orders', `/orders?event=${eventId}&expand=order_lines,order_transactions,order_transactions.data.refunds`),
+                fetchAndUpdateProgress<Attendee>('attendees', `/events/${eventId}/attendees?expand=booking_question_responses,scannings,ticket_buyer,space,membership,subscription,ticket_type`),
+                fetchAndUpdateProgress<LedgerEntry>('ledger', `/ledger_entries?event=${eventId}`),
+                fetchAllPaginatedData<TicketGroup>(`/ticket_types?event=${eventId}`, apiClient, 5, undefined, undefined, onRateLimit),
+                fetchAllPaginatedData<Campaign>(`/campaigns?event=${eventId}`, apiClient, 5, undefined, undefined, onRateLimit),
+            ]);
+            
+            setLoadingProgress({ message: 'Analyzing data...' });
+
+            const activeCampaigns = campaignsData
+                .filter(c => c.state === 'active' || c.state === 'running')
+                .flatMap(c => {
+                    const timeCondition = c.conditions.data.find(cond => cond.type === 'time');
+                    if (timeCondition && timeCondition.data.start && timeCondition.data.end) {
+                        return [{
+                            name: c.name,
+                            start: timeCondition.data.start,
+                            end: timeCondition.data.end,
+                        }];
+                    }
+                    return [];
+                });
+
+            const processedDetails = processAndBuildEventDetails(event, allOrders, allAttendees, allLedgerEntries, ticketGroupsData, activeCampaigns);
+            
+            const fullDetails: EventDetails = {
+                ...processedDetails,
+                attendees: [],
+                bookingQuestionsLoaded: false,
+            };
+
+            setEventDetails(prev => ({ ...prev, [eventId]: fullDetails }));
+            await db.setEventDetailsCache(fullDetails);
+
+            const analysis = await runBookingQuestionsAnalysis({ allOrders, allAttendees, ticketGroups: ticketGroupsData, filterTicketGroupId: 'all' });
+            if (analysis) {
+                 const detailsWithAnalysis = { ...fullDetails, bookingQuestionsAnalysis: analysis, bookingQuestionsLoaded: true };
+                 setEventDetails(prev => ({ ...prev, [eventId]: detailsWithAnalysis }));
+                 await db.setEventDetailsCache(detailsWithAnalysis);
+            }
+
+
+        } catch (err: any) {
+            setDetailsError(err.message || 'An unknown error occurred.');
+        } finally {
+            setLoading(false);
+            isFetchingDetails.current.delete(eventId);
+            setLoadingProgress(null);
+        }
+    }, [apiClient, events, addToast, onRateLimit, eventDetails]);
+
+    const prefetchEventDetails = useCallback((item: EventListItemType) => {
+        if (!item) return;
+        // Don't force a refresh, just fetch if not already in cache or being fetched.
+        fetchEventDetails(item.id, false);
+    }, [fetchEventDetails]);
+
+    const triggerAnalysis = useCallback(async (force: boolean = true) => {
+        if (!selectedItem) return;
+        setLoadingAnalysis(true);
+        try {
+            const currentDetails = eventDetails[selectedItem.id];
+            if (currentDetails && (currentDetails.bookingQuestionsLoaded && !force)) {
+                return;
+            }
+            if(currentDetails && currentDetails.allOrders && currentDetails.allAttendees) {
+                const analysis = await runBookingQuestionsAnalysis({
+                    allOrders: currentDetails.allOrders,
+                    allAttendees: currentDetails.allAttendees,
+                    ticketGroups: currentDetails.ticketGroups,
+                    filterTicketGroupId: filterTicketGroupId
+                });
+
+                if (analysis) {
+                    const detailsWithAnalysis = { ...currentDetails, bookingQuestionsAnalysis: analysis, bookingQuestionsLoaded: true };
+                    setEventDetails(prev => ({ ...prev, [selectedItem.id]: detailsWithAnalysis }));
+                    await db.setEventDetailsCache(detailsWithAnalysis);
+                }
+            } else {
+                 addToast('Detailed data not loaded yet. Please wait.', 'info');
+            }
+        } catch (error: any) {
+            addToast(`Analysis failed: ${error.message}`, 'error');
+        } finally {
+            setLoadingAnalysis(false);
+        }
+    }, [selectedItem, eventDetails, filterTicketGroupId, addToast]);
+
+    // FIX: Load events from cache on mount, or fetch if cache is empty.
     useEffect(() => {
-        const loadCachedEvents = async () => {
-            setLoadingEvents(true);
+        const loadEvents = async () => {
+            if (!apiClient) {
+                setLoadingEvents(false);
+                return;
+            }
             const { events: cachedEvents, lastUpdated } = await db.getEventsCache();
-            if (cachedEvents) {
+            if (cachedEvents && cachedEvents.length > 0) {
                 setEvents(cachedEvents);
-                if(lastUpdated) setLastUpdatedEvents(new Date(lastUpdated));
+                if (lastUpdated) setLastUpdatedEvents(new Date(lastUpdated));
                 setLoadingEvents(false);
             } else {
                 fetchAndCacheEvents();
             }
         };
-        if (apiClient) {
-            loadCachedEvents();
-        }
+        loadEvents();
     }, [apiClient, fetchAndCacheEvents]);
-    
-    const eventListItems = useMemo<EventListItemType[]>(() => {
-        const groups: { [key: string]: EventGroup } = {};
-        const singleEvents: BillettoEvent[] = [];
 
-        events.forEach(event => {
-            if (event.parent && typeof event.parent === 'object' && event.parent.id) {
-                const parentId = event.parent.id;
-                if (!groups[parentId]) {
-                    groups[parentId] = {
-                        ...(event.parent as BillettoEvent),
-                        id: parentId,
-                        name: event.parent.name || 'Event Series',
-                        isGroup: true,
-                        children: [],
-                        currency: event.currency, 
-                    };
-                }
-                groups[parentId].children.push(event);
-            } else {
-                singleEvents.push(event);
+    useEffect(() => {
+        const storedItemId = sessionStorage.getItem('selectedEventId');
+        if (storedItemId && events.length > 0 && !restorationAttempted.current) {
+            const foundItem = events.find(e => e.id === storedItemId);
+            if (foundItem) {
+                setSelectedItem(foundItem);
             }
-        });
-
-        Object.values(groups).forEach(group => {
-            group.children.sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
-        });
-
-        return [...Object.values(groups), ...singleEvents].sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
+            restorationAttempted.current = true;
+        }
     }, [events]);
-
-    const filteredEventListItems = useMemo(() => {
-        if (eventFilter === 'all') return eventListItems;
-        return eventListItems.filter(event => event.state === eventFilter);
-    }, [eventListItems, eventFilter]);
 
     useEffect(() => {
         if (selectedItem) {
+            sessionStorage.setItem('selectedEventId', selectedItem.id);
             setEventDetailView('overview');
             setAttendeePage(1);
             setFilterTicketGroupId('all');
+            fetchEventDetails(selectedItem.id, false);
+        } else {
+            sessionStorage.removeItem('selectedEventId');
         }
-    }, [selectedItem]);
+    }, [selectedItem, fetchEventDetails]);
 
+    const eventList = useMemo(() => {
+        const eventMap = new Map<string, BillettoEvent>();
+        const childrenMap = new Map<string, BillettoEvent[]>();
+
+        events.forEach(event => {
+            eventMap.set(event.id, event);
+            if (event.parent && typeof event.parent === 'string') {
+                if (!childrenMap.has(event.parent)) {
+                    childrenMap.set(event.parent, []);
+                }
+                childrenMap.get(event.parent)!.push(event);
+            }
+        });
+
+        const listItems: EventListItemType[] = [];
+        const processedIds = new Set<string>();
+
+        events.forEach(event => {
+            if (processedIds.has(event.id)) return;
+
+            const children = (childrenMap.get(event.id) || []).sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
+            if (children.length > 0) {
+                listItems.push({ ...event, isGroup: true, children });
+                children.forEach(c => processedIds.add(c.id));
+            } else if (!event.parent) {
+                listItems.push(event);
+            }
+            processedIds.add(event.id);
+        });
+
+        return listItems;
+
+    }, [events]);
+
+     const filteredEventListItems = useMemo(() => {
+        if (eventFilter === 'all') return eventList;
+        return eventList.filter(item => {
+            if ('isGroup' in item) {
+                return item.children.some(child => child.state === eventFilter);
+            }
+            return item.state === eventFilter;
+        });
+    }, [eventList, eventFilter]);
+    
     const finalEventDetails = useMemo(() => {
-        return selectedItem ? eventDetails[selectedItem.id] : null;
+        if (!selectedItem) return null;
+        return eventDetails[selectedItem.id] || null;
     }, [selectedItem, eventDetails]);
 
-    const { items: sortedEventAttendees, requestSort: requestEventAttendeesSort, sortConfig: eventAttendeesSortConfig } = useSortableData(finalEventDetails?.attendees || []);
-    const { items: sortedTicketGroups, requestSort: requestTicketGroupsSort, sortConfig: ticketGroupsSortConfig } = useSortableData(finalEventDetails?.ticketGroups || []);
-    
-    // Attendee Filtering Logic
-    const [filterQuestionId, setFilterQuestionId] = useState('');
-    const [filterAnswerText, setFilterAnswerText] = useState('');
-
-    const availableQuestions = useMemo<AvailableQuestion[]>(() => {
-        if (!finalEventDetails?.allAttendees && !finalEventDetails?.allOrders) return [];
-        const questions = new Map<string, string>();
-        const processResponses = (responses: any) => {
-            responses?.data?.forEach((r: any) => {
-                if (r.question && typeof r.question === 'object' && r.question.id) {
-                    if (!questions.has(r.question.id)) {
-                        questions.set(r.question.id, r.question.name);
-                    }
-                } else if (typeof r.question === 'string' && !questions.has(r.question)) {
-                    questions.set(r.question, r.question);
-                }
-            });
-        };
-        finalEventDetails?.allAttendees?.forEach(a => processResponses(a.booking_question_responses));
-        finalEventDetails?.allOrders?.forEach(o => processResponses(o.booking_question_responses));
-
-        return Array.from(questions, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-    }, [finalEventDetails?.allAttendees, finalEventDetails?.allOrders]);
-
     const filteredAttendees = useMemo(() => {
-        if (!finalEventDetails?.allAttendees) return [];
-        if (!filterQuestionId && !filterAnswerText) return finalEventDetails.allAttendees;
+        if (!finalEventDetails || !finalEventDetails.allAttendees) return [];
+        let attendees = finalEventDetails.allAttendees;
 
-        const lowerCaseFilterText = filterAnswerText.toLowerCase();
+        if (filterQuestionId) {
+             attendees = attendees.filter(a => 
+                a.booking_question_responses?.data.some(r => {
+                    const qId = typeof r.question === 'string' ? r.question : r.question.id;
+                    return qId === filterQuestionId;
+                })
+            );
+        }
 
-        return finalEventDetails.allAttendees.filter(attendee => {
-            return attendee.booking_question_responses?.data?.some(response => {
-                const questionMatches = filterQuestionId ? (typeof response.question === 'object' ? response.question.id === filterQuestionId : response.question === filterQuestionId) : true;
-                if (!questionMatches) return false;
+        if (filterAnswerText) {
+            const lowerCaseFilter = filterAnswerText.toLowerCase();
+            attendees = attendees.filter(a => 
+                a.booking_question_responses?.data.some(r => {
+                    const answer = r.answer || r.text || '';
+                    const qId = typeof r.question === 'string' ? r.question : r.question.id;
+                    const questionMatches = filterQuestionId ? qId === filterQuestionId : true;
+                    return questionMatches && answer.toLowerCase().includes(lowerCaseFilter);
+                })
+            );
+        }
 
-                const answer = (response.answer || response.text || '').toLowerCase();
-                return answer.includes(lowerCaseFilterText);
-            });
-        });
-    }, [finalEventDetails?.allAttendees, filterQuestionId, filterAnswerText]);
+        return attendees;
+    }, [finalEventDetails, filterQuestionId, filterAnswerText]);
     
-    const paginatedAndSortedAttendees = useMemo(() => {
-        const items = filteredAttendees;
+    const filteredAttendeesCount = filteredAttendees.length;
+
+    const { items: sortedAttendees, requestSort: requestEventAttendeesSort, sortConfig: eventAttendeesSortConfig } = useSortableData(filteredAttendees, { key: 'created_at', direction: 'descending' });
+    
+    const paginatedAttendees = useMemo(() => {
         const start = (attendeePage - 1) * ATTENDEES_PER_PAGE;
-        const end = start + ATTENDEES_PER_PAGE;
-        return items.slice(start, end);
-    }, [filteredAttendees, attendeePage]);
+        return sortedAttendees.slice(start, start + ATTENDEES_PER_PAGE);
+    }, [sortedAttendees, attendeePage]);
 
-    const { items: sortedAndFilteredAttendees } = useSortableData(paginatedAndSortedAttendees, eventAttendeesSortConfig);
-
-    useEffect(() => {
-        if (finalEventDetails) {
-            setEventDetails(prev => ({
-                ...prev,
-                [finalEventDetails.event.id]: {
-                    ...finalEventDetails,
-                    attendees: sortedAndFilteredAttendees
-                }
-            }));
-        }
-    }, [sortedAndFilteredAttendees, finalEventDetails?.event.id]);
+    const { items: sortedTicketGroups, requestSort: requestTicketGroupsSort, sortConfig: ticketGroupsSortConfig } = useSortableData(finalEventDetails?.ticketGroups || [], { key: 'sold_count', direction: 'descending' });
     
-    const triggerAnalysis = useCallback(async (force = false) => {
-        if (!finalEventDetails || isFetchingDetails.current) return;
-        const currentId = finalEventDetails.event.id;
-
-        if (!force) {
-            const cachedAnalysis = await db.getBookingQuestionsAnalysisCache(currentId);
-            if (cachedAnalysis) {
-                setEventDetails(prev => ({
-                    ...prev,
-                    [currentId]: { ...prev[currentId], bookingQuestionsAnalysis: cachedAnalysis, bookingQuestionsLoaded: true }
-                }));
-                return;
-            }
-        }
-        
-        setLoadingAnalysis(true);
-        try {
-            const analysis = await runBookingQuestionsAnalysis({
-                allOrders: finalEventDetails.allOrders,
-                allAttendees: finalEventDetails.allAttendees,
-                ticketGroups: finalEventDetails.ticketGroups,
-                filterTicketGroupId
-            });
-            if (analysis) {
-                 await db.setBookingQuestionsAnalysisCache(currentId, analysis);
-                 setEventDetails(prev => ({
-                    ...prev,
-                    [currentId]: { ...prev[currentId], bookingQuestionsAnalysis: analysis, bookingQuestionsLoaded: true }
-                }));
-            } else {
-                 setEventDetails(prev => ({
-                    ...prev,
-                    [currentId]: { ...prev[currentId], bookingQuestionsAnalysis: [], bookingQuestionsLoaded: true }
-                }));
-            }
-        } catch (error) {
-            console.error("Error running analysis:", error);
-        } finally {
-            setLoadingAnalysis(false);
-        }
-    }, [finalEventDetails, filterTicketGroupId]);
+    const availableQuestions = useMemo(() => {
+        if (!finalEventDetails?.bookingQuestionsAnalysis) return [];
+        return finalEventDetails.bookingQuestionsAnalysis.map(q => ({ id: q.id, name: q.name }));
+    }, [finalEventDetails?.bookingQuestionsAnalysis]);
     
-    useEffect(() => {
-        if (eventDetailView === 'bookingQuestions' && finalEventDetails && !finalEventDetails.bookingQuestionsLoaded) {
-            triggerAnalysis();
-        }
-    }, [eventDetailView, finalEventDetails, triggerAnalysis]);
-    
-    useEffect(() => {
-        if (finalEventDetails) {
-            triggerAnalysis(); 
-        }
-    }, [filterTicketGroupId]);
 
     useEffect(() => {
-        const fetchDetails = async () => {
-            if (!selectedItem || !apiClient || isFetchingDetails.current) return;
-    
-            // Immediately try to load from cache for an instant UI response.
-            const cachedDetails = await db.getEventDetailsCache(selectedItem.id);
-            if (cachedDetails) {
-                setEventDetails(prev => ({ ...prev, [selectedItem.id]: cachedDetails }));
-            } else {
-                // Only show the blocking loader if there's no cached data at all.
-                setLoadingDetails(true);
-            }
-    
-            // Start the full data fetch, either in the background or foreground.
-            isFetchingDetails.current = true;
-            if (cachedDetails) {
-                setIsRefreshingDetails(true); // Signal a non-blocking background refresh.
-            }
-            setDetailsError(null);
-            setLoadingProgress({ message: 'Starting data fetch...' });
-    
-            try {
-                const isGroup = 'isGroup' in selectedItem;
-                const eventIds = isGroup ? selectedItem.children.map(c => c.id) : [selectedItem.id];
-    
-                const [allOrders, allAttendees, allLedgerEntries, ticketGroupsData, eventCampaigns] = await Promise.all([
-                    Promise.all(eventIds.map(id => fetchAllPaginatedData<Order>(`/orders?event=${id}&expand=order_lines,order_transactions`, apiClient, 5, p => setLoadingProgress(prev => ({ ...prev, orders: p }))))).then(res => res.flat()),
-                    Promise.all(eventIds.map(id => fetchAllPaginatedData<Attendee>(`/events/${id}/attendees?expand=booking_question_responses,scannings,ticket_type`, apiClient, 5, p => setLoadingProgress(prev => ({ ...prev, attendees: p }))))).then(res => res.flat()),
-                    Promise.all(eventIds.map(id => fetchAllPaginatedData<LedgerEntry>(`/ledger_entries?event=${id}`, apiClient, 5, p => setLoadingProgress(prev => ({ ...prev, ledger: p }))))).then(res => res.flat()),
-                    Promise.all(eventIds.map(id => fetchAllPaginatedData<TicketGroup>(`/ticket_types?event=${id}`, apiClient, 5))).then(res => res.flat()),
-                    Promise.all(eventIds.map(id => fetchAllPaginatedData<Campaign>(`/campaigns?event=${id}`, apiClient, 5))).then(res => res.flat()),
-                ]);
-    
-                const activeCampaigns: CampaignTimeBlock[] = eventCampaigns.flatMap(campaign => {
-                    return campaign.conditions.data
-                        .filter(condition => condition.type === 'time' && condition.data.start && condition.data.end)
-                        .map(condition => ({
-                            name: campaign.name,
-                            start: condition.data.start!,
-                            end: condition.data.end!,
-                        }));
-                });
-                
-                let eventForProcessing: BillettoEvent = selectedItem;
-                if (!isGroup) {
-                    try {
-                        const fullEvent = await apiClient.getEvent(selectedItem.id, ['venue', 'location', 'organization', 'editorial']);
-                        eventForProcessing = fullEvent;
-                    } catch (e) {
-                        console.warn(`Could not fetch full event details for event ${selectedItem.id}`, e);
-                    }
-                }
-    
-                setLoadingProgress({ message: 'Processing data...' });
-                const baseDetails = processAndBuildEventDetails(eventForProcessing, allOrders, allAttendees, allLedgerEntries, ticketGroupsData, activeCampaigns);
-                
-                const fullDetails: EventDetails = {
-                    ...baseDetails,
-                    attendees: [], 
-                };
-                
-                await db.setEventDetailsCache(fullDetails);
-                setEventDetails(prev => ({ ...prev, [selectedItem.id]: fullDetails }));
-    
-            } catch (err) {
-                 if (err instanceof BillettoApiError) setDetailsError(err.message);
-                 else setDetailsError('An unknown error occurred while fetching event details.');
-            } finally {
-                setLoadingDetails(false);
-                setIsRefreshingDetails(false);
-                isFetchingDetails.current = false;
-                setLoadingProgress(null);
-            }
-        };
-    
-        fetchDetails();
-    }, [selectedItem, apiClient]);
-
-    // --- State Persistence ---
-    useEffect(() => {
-        if (selectedItem) {
-            localStorage.setItem('billettoSelectedItemId', selectedItem.id);
-        }
-    }, [selectedItem]);
-
-    useEffect(() => {
-        if (restorationAttempted.current || eventListItems.length === 0) {
-            return;
-        }
-
-        const savedId = localStorage.getItem('billettoSelectedItemId');
-        if (savedId) {
-            const findItemRecursive = (items: EventListItemType[], id: string): EventListItemType | undefined => {
-                for (const item of items) {
-                    if (item.id === id) {
-                        return item;
-                    }
-                    if ('isGroup' in item && item.children) {
-                        const foundChild = item.children.find(child => child.id === id);
-                        if (foundChild) {
-                            return foundChild;
-                        }
-                    }
-                }
-                return undefined;
-            };
-
-            const itemToSelect = findItemRecursive(eventListItems, savedId);
-
-            if (itemToSelect) {
-                setSelectedItem(itemToSelect);
-            } else {
-                localStorage.removeItem('billettoSelectedItemId');
-            }
-        }
-        restorationAttempted.current = true;
-    }, [eventListItems]);
+        setAttendeePage(1);
+    }, [filterQuestionId, filterAnswerText]);
 
     return {
         events, loadingEvents, eventsError, lastUpdatedEvents, fetchAndCacheEvents,
-        filteredEventListItems, eventFilter, setEventFilter, selectedItem, setSelectedItem,
-        finalEventDetails: useMemo(() => {
-            if (!finalEventDetails) return null;
-            return {
-                ...finalEventDetails,
-                attendees: sortedEventAttendees,
-                ticketGroups: sortedTicketGroups
-            }
-        }, [finalEventDetails, sortedEventAttendees, sortedTicketGroups]),
-        loadingDetails, detailsError, isRefreshingDetails,
-        eventDetailView, setEventDetailView, attendeePage, setAttendeePage,
+        eventList, filteredEventListItems, eventFilter, setEventFilter, selectedItem, setSelectedItem,
+        finalEventDetails: finalEventDetails ? { ...finalEventDetails, attendees: paginatedAttendees, ticketGroups: sortedTicketGroups } : null,
+        loadingDetails, isRefreshingDetails, detailsError, fetchEventDetails, prefetchEventDetails,
+        eventDetailView, setEventDetailView,
+        attendeePage, setAttendeePage,
         requestEventAttendeesSort, eventAttendeesSortConfig,
-        requestTicketGroupsSort: requestTicketGroupsSort, ticketGroupsSortConfig: ticketGroupsSortConfig,
+        requestTicketGroupsSort, ticketGroupsSortConfig,
         loadingAnalysis, triggerAnalysis,
         filterTicketGroupId, setFilterTicketGroupId,
         loadingProgress,
         availableQuestions,
-        filterQuestionId, setFilterQuestionId,
-        filterAnswerText, setFilterAnswerText,
+        filterQuestionId,
+        setFilterQuestionId,
+        filterAnswerText,
+        setFilterAnswerText,
         filteredAttendees,
-        filteredAttendeesCount: filteredAttendees.length,
+        filteredAttendeesCount
     };
 };

@@ -610,7 +610,12 @@ export type RunTaskInBackgroundSignature = <T>(
     name: string,
     taskFn: (
         updateProgress: (progress: { value: number; message: string }) => void,
-        isCancelled: () => boolean
+        signal: AbortSignal
     ) => Promise<T>,
     onSuccess?: (result: T) => void
 ) => void;
+
+// Fix: Moved from App.tsx to break circular dependencies
+export type View = 'dashboard' | 'performance' | 'orders' | 'ledger' | 'campaigns' | 'targetGroups' | 'attendees' | 'audience';
+export type Theme = 'light' | 'dark' | 'system';
+export type AddToastFn = (message: string, type: Toast['type']) => void;

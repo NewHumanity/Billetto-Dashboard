@@ -1,5 +1,5 @@
 import React, { useState, useContext, useMemo } from 'react';
-import { EventDetails, Attendee, TicketGroup, SortConfig, AvailableQuestion, GeographicSaleData } from '../types';
+import { EventDetails, Attendee, TicketGroup, SortConfig, AvailableQuestion, GeographicSaleData, Theme } from '../types';
 import StatCard from './StatCard';
 import AttendeesTable from './EventsTable';
 import Pagination from './Pagination';
@@ -14,7 +14,7 @@ import { StatCardSkeleton, ChartSkeleton, TableSkeleton } from './Skeleton';
 import LedgerDetailTable from './modal_tables/LedgerDetailTable';
 import OrdersDetailTable, { GrossRevenueDetailTable } from './modal_tables/OrdersDetailTable';
 import AttendeesDetailTable from './modal_tables/AttendeesDetailTable';
-import { Theme } from '../../App';
+// Fix: Corrected import path for Theme type
 import FeeBreakdownDetails from './FeeBreakdownDetails';
 import { AppContext } from '../contexts/AppContext';
 import SimpleBarChart from './EventsChart';

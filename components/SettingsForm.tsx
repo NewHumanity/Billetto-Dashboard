@@ -1,7 +1,8 @@
 
 
 import React, { useState } from 'react';
-import { Theme } from '../App';
+// Fix: Corrected import path for Theme type
+import { Theme } from '../types';
 
 interface SettingsFormProps {
   initialApiKey: string;

@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 const timeSince = (date: Date): string => {
@@ -20,11 +21,20 @@ interface RefreshBarProps {
   lastUpdated: Date | null;
   onRefresh: () => void;
   loading: boolean;
+  isRefreshing?: boolean;
   viewName: string;
 }
 
-const RefreshBar: React.FC<RefreshBarProps> = ({ lastUpdated, onRefresh, loading, viewName }) => {
+const RefreshBar: React.FC<RefreshBarProps> = ({ lastUpdated, onRefresh, loading, isRefreshing, viewName }) => {
   const isAnalysisView = viewName.includes('analysis');
+  const showSpinner = loading || isRefreshing;
+
+  let buttonText = isAnalysisView ? 'Refresh Analysis' : 'Refresh Data';
+  if (loading) {
+    buttonText = isAnalysisView ? 'Analyzing...' : 'Refreshing...';
+  } else if (isRefreshing) {
+    buttonText = 'Updating...';
+  }
 
   return (
     <div className="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3 mb-6 flex items-center justify-between text-sm flex-wrap gap-2">
@@ -37,19 +47,15 @@ const RefreshBar: React.FC<RefreshBarProps> = ({ lastUpdated, onRefresh, loading
       <button
         onClick={onRefresh}
         disabled={loading}
-        className="px-3 py-1.5 font-semibold text-white bg-brand-primary/80 rounded-md hover:bg-brand-primary disabled:opacity-50 disabled:cursor-wait transition-colors flex items-center"
+        className="px-3 py-1.5 font-semibold text-white bg-brand-primary/80 rounded-md hover:bg-brand-primary disabled:opacity-50 disabled:cursor-wait transition-colors flex items-center gap-2"
       >
-        {loading ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              {isAnalysisView ? 'Analyzing in Background...' : 'Refreshing...'}
-            </>
-        ) : (
-          isAnalysisView ? 'Refresh Analysis' : 'Refresh Data'
+        {showSpinner && (
+          <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
         )}
+        <span>{buttonText}</span>
       </button>
     </div>
   );

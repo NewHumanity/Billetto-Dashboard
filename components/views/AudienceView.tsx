@@ -17,13 +17,13 @@ const AudienceView: React.FC = () => {
 
     const {
         audience,
-        loading,
-        error,
-        lastUpdated,
-        progress,
-        performAnalysis,
-        pagination,
-        handlePageChange,
+        loadingAudience: loading,
+        audienceError: error,
+        lastUpdatedAudience: lastUpdated,
+        audienceProgress: progress,
+        performAudienceAnalysis,
+        audiencePagination: pagination,
+        handleAudiencePageChange: handlePageChange,
         requestAudienceSort,
         audienceSortConfig,
         setModalView,
@@ -33,7 +33,7 @@ const AudienceView: React.FC = () => {
     } = context;
 
     const refreshData = () => {
-        performAnalysis(true);
+        performAudienceAnalysis(true);
     };
 
     const handleSelectCustomer = (customerId: string) => {

@@ -1,9 +1,8 @@
 
-
 import { BillettoEvent, ListResponse, Attendee, Order, LedgerEntry, Campaign, TicketGroup, TargetGroup, TargetGroupMember } from '../types';
 import { limitRequest } from './requestLimiter';
+import * as db from './dbService';
 
-// Switching to a more reliable proxy to handle fetch errors.
 const CORS_PROXY_URL = 'https://yogamela.org/billetto-proxy.php';
 const BILLETTO_API_BASE = 'https://billetto.dk/api/v3/organiser';
 const REQUEST_TIMEOUT = 15000; // 15 seconds
@@ -29,6 +28,13 @@ export class BillettoApiError extends Error {
   }
 }
 
+export class NotModifiedError extends Error {
+  constructor(message: string = 'Content not modified') {
+    super(message);
+    this.name = 'NotModifiedError';
+  }
+}
+
 export class BillettoApiClient {
   private readonly apiKey: string;
   private readonly useProxy: boolean;
@@ -51,38 +57,64 @@ export class BillettoApiClient {
     };
   }
   
-  private async makeRequest(endpoint: string, timeout: number): Promise<Response> {
+  private async makeRequest(endpoint: string, timeout: number, signal?: AbortSignal): Promise<Response> {
     const doFetch = async (): Promise<Response> => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        const onAbort = () => controller.abort();
+        if (signal) {
+            if (signal.aborted) {
+                controller.abort();
+            } else {
+                signal.addEventListener('abort', onAbort);
+            }
+        }
 
         const isFullUrl = endpoint.startsWith('http');
         const targetUrl = isFullUrl ? endpoint : `${this.billettoApiBase}${endpoint}`;
         
         const requestUrl = this.useProxy ? `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}` : targetUrl;
+        
+        const headers = this.getHeaders();
+        const etag = await db.getETag(targetUrl);
+        if (etag) {
+            headers['If-None-Match'] = etag;
+        }
 
         try {
             const response = await fetch(requestUrl, {
                 method: 'GET',
-                headers: this.getHeaders(),
+                headers: headers,
                 signal: controller.signal,
             });
-
-            clearTimeout(timeoutId);
+            
+            if (response.status === 304) {
+                throw new NotModifiedError();
+            }
             
             if (!response.ok) {
                 await this.handleHttpError(response);
             }
 
+            const newEtag = response.headers.get('ETag');
+            if (newEtag) {
+                await db.setETag(targetUrl, newEtag);
+            }
+
             return response;
         } catch (error) {
-            clearTimeout(timeoutId);
-            
+            if (error instanceof NotModifiedError) {
+                throw error;
+            }
             if (error instanceof Error && error.name === 'AbortError') {
+                if (signal?.aborted) {
+                    throw error; 
+                }
                 throw new BillettoApiError(`Request timeout after ${timeout}ms`, BillettoErrorType.NETWORK);
             }
             
-            console.error(
+            console.warn(
                 "Billetto API Request Failed:",
                 `\nRequest URL: ${requestUrl}`,
                 `\nTarget URL: ${targetUrl}`,
@@ -95,10 +127,14 @@ export class BillettoApiClient {
             
             const userMessage = "Network error. This could be due to a CORS problem, your internet connection, or the Billetto API being temporarily down. Please check the developer console for more details.";
             throw new BillettoApiError(userMessage, BillettoErrorType.NETWORK, undefined, error);
+        } finally {
+            clearTimeout(timeoutId);
+            if (signal) {
+                signal.removeEventListener('abort', onAbort);
+            }
         }
     };
     
-    // Wrap the actual fetch logic with our global rate limiter
     return limitRequest(doFetch);
   }
   
@@ -138,8 +174,8 @@ export class BillettoApiClient {
     return event && event.object === 'event' && typeof event.id === 'string';
   }
 
-  public async fetchListEndpoint<T>(endpoint: string): Promise<ListResponse<T>> {
-    const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
+  public async fetchListEndpoint<T>(endpoint: string, signal?: AbortSignal): Promise<ListResponse<T>> {
+    const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT, signal);
     return this.parseListResponse<T>(response);
   }
 

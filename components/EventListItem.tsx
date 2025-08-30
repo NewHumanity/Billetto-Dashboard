@@ -1,9 +1,10 @@
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { BillettoEvent, EventListItemType } from '../types';
-import { CalendarIcon, CurrencyIcon, TicketIcon } from './icons';
+import { CalendarIcon, CurrencyIcon } from './icons';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
+import { AppContext } from '../contexts/AppContext';
 
 interface EventListItemProps {
     item: EventListItemType;
@@ -28,7 +29,7 @@ const formatDate = (dateString: string) => {
     });
 };
 
-const SingleEventRow: React.FC<{ event: BillettoEvent, isSelected: boolean, onSelect: () => void, isChild?: boolean }> = ({ event, isSelected, onSelect, isChild = false }) => {
+const SingleEventRow: React.FC<{ event: BillettoEvent, isSelected: boolean, onSelect: () => void, isChild?: boolean, onPrefetch: () => void, onCancelPrefetch: () => void }> = ({ event, isSelected, onSelect, isChild = false, onPrefetch, onCancelPrefetch }) => {
     
     const itemClasses = `
         block w-full p-3 text-left transition-all duration-200 cursor-pointer
@@ -40,7 +41,15 @@ const SingleEventRow: React.FC<{ event: BillettoEvent, isSelected: boolean, onSe
     `;
     
     return (
-        <div onClick={onSelect} className={itemClasses} role="button" aria-pressed={isSelected} tabIndex={0} onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect()}>
+        <div 
+            onClick={onSelect} 
+            onMouseEnter={onPrefetch}
+            onMouseLeave={onCancelPrefetch}
+            className={itemClasses} 
+            role="button" 
+            aria-pressed={isSelected} 
+            tabIndex={0} 
+            onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect()}>
             <div className="flex justify-between items-start">
                 <p className={`font-semibold pr-2 ${isSelected ? 'text-brand-primary dark:text-white' : 'text-slate-800 dark:text-slate-200'} ${isChild ? 'text-sm' : 'text-base'}`}>
                     {event.name}
@@ -69,6 +78,8 @@ const SingleEventRow: React.FC<{ event: BillettoEvent, isSelected: boolean, onSe
 const EventListItem: React.FC<EventListItemProps> = ({ item, isSelected, onSelect }) => {
     const isGroup = 'isGroup' in item && item.children.length > 0;
     const [isExpanded, setIsExpanded] = useState(false);
+    const context = useContext(AppContext);
+    const prefetchTimeout = useRef<number | null>(null);
 
     useEffect(() => {
         if (isSelected && isGroup) {
@@ -83,10 +94,27 @@ const EventListItem: React.FC<EventListItemProps> = ({ item, isSelected, onSelec
         }
     };
 
+    const handlePrefetch = (eventItem: EventListItemType) => {
+        if (prefetchTimeout.current) clearTimeout(prefetchTimeout.current);
+        prefetchTimeout.current = window.setTimeout(() => {
+            context?.prefetchEventDetails(eventItem);
+        }, 300); // 300ms delay before pre-fetching
+    };
+    
+    const handleCancelPrefetch = () => {
+        if (prefetchTimeout.current) clearTimeout(prefetchTimeout.current);
+    };
+
     if (!isGroup) {
         return (
             <li>
-                <SingleEventRow event={item} isSelected={isSelected} onSelect={() => onSelect(item)} />
+                <SingleEventRow 
+                    event={item} 
+                    isSelected={isSelected} 
+                    onSelect={() => onSelect(item)}
+                    onPrefetch={() => handlePrefetch(item)}
+                    onCancelPrefetch={handleCancelPrefetch}
+                />
             </li>
         )
     }
@@ -106,6 +134,8 @@ const EventListItem: React.FC<EventListItemProps> = ({ item, isSelected, onSelec
         <li className="bg-white dark:bg-slate-800/60 rounded-lg border border-gray-200 dark:border-slate-700/50">
              <div 
               onClick={() => onSelect(group)} 
+              onMouseEnter={() => handlePrefetch(group)}
+              onMouseLeave={handleCancelPrefetch}
               className={itemClasses} 
               role="button" 
               aria-pressed={groupIsSelected}
@@ -152,6 +182,8 @@ const EventListItem: React.FC<EventListItemProps> = ({ item, isSelected, onSelec
                                 isSelected={(isSelected && (item as any).id === child.id)}
                                 onSelect={() => onSelect(child)} 
                                 isChild 
+                                onPrefetch={() => handlePrefetch(child)}
+                                onCancelPrefetch={handleCancelPrefetch}
                             />
                         </li>
                     ))}

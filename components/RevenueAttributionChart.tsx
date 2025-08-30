@@ -1,8 +1,8 @@
 
+
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
-import { EventDetails } from '../types';
-import { Theme } from '../../App';
+import { EventDetails, Theme } from '../types';
 
 interface RevenueAttributionChartProps {
     data: NonNullable<EventDetails['revenueBySource']>;

@@ -1,75 +1,103 @@
 
 
-import { useState, useCallback, useEffect } from 'react';
-import { LedgerEntry, Order } from '../types';
-import { BillettoApiClient, BillettoApiError } from '../services/billettoService';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { LedgerEntry } from '../types';
+import { BillettoApiClient, BillettoApiError, NotModifiedError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
+import { fetchAllPaginatedData } from '../utils/apiHelpers';
+// Fix: Import from types.ts to break circular dependency
+import { AddToastFn } from '../types';
 
 const LEDGER_ENTRIES_PER_PAGE = 100;
 
-export const useLedger = (apiClient: BillettoApiClient | null) => {
-    const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
-    const [loadingLedger, setLoadingLedger] = useState<boolean>(false);
+export const useLedger = (apiClient: BillettoApiClient | null, addToast: AddToastFn) => {
+    const [allEntries, setAllEntries] = useState<LedgerEntry[]>([]);
+    const [loadingLedger, setLoadingLedger] = useState<boolean>(true);
+    const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
     const [ledgerError, setLedgerError] = useState<string | null>(null);
-    const [ledgerPagination, setLedgerPagination] = useState({ currentPage: 1, total: 0 });
+    const [pagination, setPagination] = useState({ currentPage: 1 });
     const [lastUpdatedLedger, setLastUpdatedLedger] = useState<Date | null>(null);
+
+    const onRateLimit = useCallback((message: string) => {
+        addToast(message, 'info');
+    }, [addToast]);
     
-    // This state is just for triggering the modal. The modal logic itself is in LedgerView.
-    const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+    const { items: sortedLedger, requestSort: requestLedgerSort, sortConfig: ledgerSortConfig } = useSortableData(allEntries, { key: 'created_at', direction: 'descending' });
+    
+    const paginatedLedger = useMemo(() => {
+        const start = (pagination.currentPage - 1) * LEDGER_ENTRIES_PER_PAGE;
+        const end = start + LEDGER_ENTRIES_PER_PAGE;
+        return sortedLedger.slice(start, end);
+    }, [sortedLedger, pagination.currentPage]);
 
-    const { items: sortedLedger, requestSort: requestLedgerSort, sortConfig: ledgerSortConfig } = useSortableData(ledgerEntries, { key: 'created_at', direction: 'descending' });
-
-    const fetchAndCacheLedger = useCallback(async (page = 1) => {
+    const fetchAndCacheLedger = useCallback(async (isBackgroundRefresh = false) => {
         if (!apiClient) return;
-        setLoadingLedger(true);
-        setLedgerError(null);
-        try {
-            const response = await apiClient.getLedgerEntries(page, LEDGER_ENTRIES_PER_PAGE, ['event']);
-            setLedgerEntries(response.data);
-            setLedgerPagination({ currentPage: page, total: response.total });
-            await db.setLedgerCache(page, response);
-            const { lastUpdated } = await db.getLedgerCache(page);
-            if (lastUpdated) setLastUpdatedLedger(new Date(lastUpdated));
-        } catch (err) {
-            if (err instanceof BillettoApiError) setLedgerError(err.message);
-            else setLedgerError('An unknown error occurred while fetching financial records.');
-        } finally {
-            setLoadingLedger(false);
+
+        if (isBackgroundRefresh) {
+            setIsRefreshing(true);
+        } else {
+            setLoadingLedger(true);
         }
-    }, [apiClient]);
+        setLedgerError(null);
+
+        try {
+            const response = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries?expand=event', apiClient, 5, undefined, undefined, onRateLimit);
+            setAllEntries(response);
+            await db.setLedgerCache(response);
+            setLastUpdatedLedger(new Date());
+        } catch (err) {
+            if (err instanceof NotModifiedError) {
+                addToast('Financial records are up to date.', 'info');
+                setLastUpdatedLedger(new Date());
+            } else if (err instanceof BillettoApiError) {
+                setLedgerError(err.message);
+            } else if (err instanceof Error && err.name !== 'CancellationError') {
+                setLedgerError('An unknown error occurred while fetching financial records.');
+            }
+        } finally {
+             if (isBackgroundRefresh) {
+                setIsRefreshing(false);
+            } else {
+                setLoadingLedger(false);
+            }
+        }
+    }, [apiClient, onRateLimit, addToast]);
 
     useEffect(() => {
-        const loadCachedLedger = async () => {
-            const { ledgerData: cachedLedger, lastUpdated: luLedger } = await db.getLedgerCache(1);
-            if (cachedLedger) {
-                setLedgerEntries(cachedLedger.data);
-                setLedgerPagination({ currentPage: 1, total: cachedLedger.total });
-                if(luLedger) setLastUpdatedLedger(new Date(luLedger));
+        const loadLedger = async () => {
+             if (!apiClient) {
+                setLoadingLedger(false);
+                return;
+            };
+            const { entries: cachedEntries, lastUpdated } = await db.getLedgerCache();
+            if (cachedEntries && cachedEntries.length > 0) {
+                setAllEntries(cachedEntries);
+                if(lastUpdated) setLastUpdatedLedger(new Date(lastUpdated));
+                setLoadingLedger(false);
+                fetchAndCacheLedger(true); // stale-while-revalidate
             } else {
-                fetchAndCacheLedger(1);
+                fetchAndCacheLedger(false); // initial full load
             }
         };
-        if (apiClient) {
-            loadCachedLedger();
-        }
+        loadLedger();
     }, [apiClient, fetchAndCacheLedger]);
 
-    const handleLedgerPageChange = async (page: number) => {
-        setLedgerPagination(prev => ({ ...prev, currentPage: page }));
-        const { ledgerData } = await db.getLedgerCache(page);
-        if (ledgerData) {
-            setLedgerEntries(ledgerData.data);
-            setLedgerPagination({ currentPage: page, total: ledgerData.total });
-        } else {
-            fetchAndCacheLedger(page);
-        }
+    const handleLedgerPageChange = (page: number) => {
+        setPagination({ currentPage: page });
     };
     
     return {
-        sortedLedger, loadingLedger, ledgerError, lastUpdatedLedger,
-        fetchAndCacheLedger, ledgerPagination, handleLedgerPageChange,
-        selectedOrderId, setSelectedOrderId,
-        requestLedgerSort, ledgerSortConfig
+        ledgerEntries: paginatedLedger,
+        fullSortedLedger: sortedLedger,
+        loadingLedger,
+        isRefreshingLedger: isRefreshing,
+        ledgerError, 
+        lastUpdatedLedger,
+        refreshLedger: () => fetchAndCacheLedger(false), 
+        ledgerPagination: { currentPage: pagination.currentPage, total: sortedLedger.length }, 
+        handleLedgerPageChange,
+        requestLedgerSort, 
+        ledgerSortConfig
     };
 };

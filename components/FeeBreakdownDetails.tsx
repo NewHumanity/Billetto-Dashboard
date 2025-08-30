@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { LedgerEntry } from '../types';
 import SimpleDonutChart from './SimpleDonutChart';
@@ -22,7 +23,7 @@ const formatSubtype = (subtype: string) => {
 const FeeBreakdownDetails: React.FC<FeeBreakdownDetailsProps> = ({ feeEntries, currency }) => {
     
     const { breakdown, totalFees } = React.useMemo(() => {
-        // Fix: Explicitly type the accumulator in the reducer to ensure correct type inference.
+        // FIX: Explicitly type the accumulator in the reducer to ensure correct type inference.
         const breakdown = feeEntries.reduce((acc: Record<string, number>, entry) => {
             const subtype = entry.entry_subtype || 'uncategorized';
             // Fees are negative, so use Math.abs

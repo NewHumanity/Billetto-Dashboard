@@ -139,15 +139,20 @@ export const runBookingQuestionsAnalysis = async ({
             let questionId: string;
             let questionName: string;
 
-            // Handle cases where API sends question as a string (name) instead of an expanded object
+            // Handle cases where API sends question as a string (name) or an expanded object
             if (typeof response.question === 'string') {
                 questionName = response.question;
                 questionId = response.question; // Use the name as a unique key for grouping
-            } else {
-                // This is the expected expanded object case
+            } else if (response.question && typeof response.question === 'object' && response.question.id) {
+                // This is the expected expanded object case, with a check for validity
                 questionId = response.question.id;
                 questionName = response.question.name;
+            } else {
+                // Malformed question object, skip this response to avoid errors
+                console.warn('Skipping malformed booking question response:', response);
+                continue;
             }
+
 
             if (!questionMap[questionId]) {
                 questionMap[questionId] = { name: questionName, answers: {} };

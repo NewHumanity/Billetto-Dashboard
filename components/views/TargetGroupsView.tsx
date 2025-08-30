@@ -1,3 +1,4 @@
+
 import React, { useContext } from 'react';
 import RefreshBar from '../RefreshBar';
 import Loader from '../Loader';
@@ -48,8 +49,8 @@ const TargetGroupsView: React.FC = () => {
     if (!context) throw new Error("TargetGroupsView must be used within an AppContextProvider");
 
     const {
-        sortedTargetGroups, loadingTargetGroups, targetGroupsError, lastUpdatedTargetGroups,
-        fetchAndCacheTargetGroups, targetGroupsPagination, handleTargetGroupPageChange,
+        sortedTargetGroups, loadingTargetGroups, isRefreshingTargetGroups, targetGroupsError, lastUpdatedTargetGroups,
+        refreshTargetGroups, targetGroupsPagination, handleTargetGroupPageChange,
         requestTargetGroupSort, targetGroupSortConfig, selectedTargetGroupId, setSelectedTargetGroupId,
         sortedTargetGroupMembers, loadingMembers, membersError, membersPagination, handleMemberPageChange,
         requestMemberSort, memberSortConfig
@@ -61,7 +62,7 @@ const TargetGroupsView: React.FC = () => {
 
     return (
         <div className="animate-fade-in">
-            <RefreshBar lastUpdated={lastUpdatedTargetGroups} loading={loadingTargetGroups} onRefresh={() => fetchAndCacheTargetGroups(1)} viewName="target groups" />
+            <RefreshBar lastUpdated={lastUpdatedTargetGroups} loading={loadingTargetGroups} isRefreshing={isRefreshingTargetGroups} onRefresh={refreshTargetGroups} viewName="target groups" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                     <div className="flex justify-between items-center mb-4 flex-wrap gap-4">

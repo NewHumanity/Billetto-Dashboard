@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Routes, Route, NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { BillettoApiClient } from './services/billettoService';
@@ -24,7 +25,8 @@ import { useAudience } from './hooks/useAudience';
 import { usePerformance } from './hooks/usePerformance';
 import { AppContext, AppContextType } from './contexts/AppContext';
 import GlobalSearch from './components/GlobalSearch';
-import { ModalView, Toast, BackgroundTask } from './types';
+// Fix: Import types from types.ts to break circular dependency
+import { ModalView, Toast, BackgroundTask, View, Theme, AddToastFn } from './types';
 import DetailsModal from './components/DetailsModal';
 import OrderDetailsView from './components/modal_views/OrderDetailsView';
 import AttendeeDetailsView from './components/modal_views/AttendeeDetailsView';
@@ -33,9 +35,6 @@ import CustomerDetailsView from './components/modal_views/CustomerDetailsView';
 import { ToastContainer } from './components/Toast';
 import BackgroundTaskDisplay from './components/BackgroundTaskDisplay';
 import { CancellationError } from './utils/apiHelpers';
-
-export type View = 'dashboard' | 'performance' | 'orders' | 'ledger' | 'campaigns' | 'targetGroups' | 'attendees' | 'audience';
-export type Theme = 'light' | 'dark' | 'system';
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('billettoApiKey') || '');
@@ -59,14 +58,15 @@ const App: React.FC = () => {
   // --- Toast & Background Task State ---
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
-  const [cancelledTasks, setCancelledTasks] = useState(new Set<string>());
+  const [taskControllers, setTaskControllers] = useState(new Map<string, AbortController>());
+
 
   const apiClient = useMemo(() => apiKey ? new BillettoApiClient(apiKey, useProxy) : null, [apiKey, useProxy]);
   const navigate = useNavigate();
   const location = useLocation();
 
   // --- Toast & Background Task Management ---
-  const addToast = useCallback((message: string, type: Toast['type']) => {
+  const addToast: AddToastFn = useCallback((message: string, type: Toast['type']) => {
     setToasts(prevToasts => {
         const existingToast = prevToasts.find(t => t.message === message && t.type === type);
         
@@ -87,13 +87,16 @@ const App: React.FC = () => {
   };
   
   const cancelTask = useCallback((taskId: string) => {
-      setCancelledTasks(prev => new Set(prev).add(taskId));
+      const controller = taskControllers.get(taskId);
+      if (controller) {
+          controller.abort();
+      }
       setBackgroundTasks(prev => prev.map(task => 
           task.id === taskId && task.status === 'running'
               ? { ...task, status: 'cancelled', message: 'User cancelled', progress: task.progress || 0 }
               : task
       ));
-  }, []);
+  }, [taskControllers]);
 
   const clearTask = useCallback((taskId: string) => {
       setBackgroundTasks(prev => prev.filter(task => task.id !== taskId));
@@ -102,7 +105,7 @@ const App: React.FC = () => {
   const runTaskInBackground = useCallback(async <T,>(
       id: string,
       name: string,
-      taskFn: (updateProgress: (progress: { value: number; message: string }) => void, isCancelled: () => boolean) => Promise<T>,
+      taskFn: (updateProgress: (progress: { value: number; message: string }) => void, signal: AbortSignal) => Promise<T>,
       onSuccess?: (result: T) => void
   ) => {
       if (backgroundTasks.some(task => task.id === id && task.status === 'running')) {
@@ -110,16 +113,11 @@ const App: React.FC = () => {
           return;
       }
 
-      setCancelledTasks(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(id);
-          return newSet;
-      });
-      
-      const isCancelled = () => cancelledTasks.has(id);
+      const controller = new AbortController();
+      setTaskControllers(prev => new Map(prev).set(id, controller));
 
       const updateProgress = (progress: { value: number, message: string }) => {
-          if (isCancelled()) return;
+          if (controller.signal.aborted) return;
           setBackgroundTasks(prev => prev.map(task => 
               task.id === id ? { ...task, progress: progress.value, message: progress.message } : task
           ));
@@ -128,8 +126,8 @@ const App: React.FC = () => {
       setBackgroundTasks(prev => [...prev.filter(t => t.id !== id), { id, name, status: 'running', message: 'Starting...' }]);
 
       try {
-          const result = await taskFn(updateProgress, isCancelled);
-          if (isCancelled()) {
+          const result = await taskFn(updateProgress, controller.signal);
+          if (controller.signal.aborted) {
               console.log(`Task ${id} finished but was already cancelled.`);
               return;
           }
@@ -141,7 +139,7 @@ const App: React.FC = () => {
               onSuccess(result);
           }
       } catch (error: any) {
-          if (error instanceof CancellationError) {
+          if (error instanceof CancellationError || (error instanceof Error && error.name === 'AbortError')) {
               console.log(`Background task "${name}" was cancelled.`);
           } else {
               console.error(`Background task "${name}" failed:`, error);
@@ -150,19 +148,25 @@ const App: React.FC = () => {
               ));
               addToast(`${name} failed: ${error.message || 'Unknown error'}`, 'error');
           }
+      } finally {
+          setTaskControllers(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(id);
+              return newMap;
+          });
       }
-  }, [backgroundTasks, addToast, cancelledTasks]);
+  }, [backgroundTasks, addToast, taskControllers]);
 
 
   // --- Initialize All Hooks ---
-  const eventsHook = useEvents(apiClient);
-  const ordersHook = useOrders(apiClient);
-  const ledgerHook = useLedger(apiClient);
-  const campaignsHook = useCampaigns(apiClient);
-  const targetGroupsHook = useTargetGroups(apiClient);
-  const attendeesHook = useAttendees(apiClient);
-  const audienceHook = useAudience(apiClient, runTaskInBackground, backgroundTasks);
-  const performanceHook = usePerformance(apiClient, runTaskInBackground, backgroundTasks);
+  const eventsHook = useEvents(apiClient, addToast);
+  const ordersHook = useOrders(apiClient, addToast);
+  const ledgerHook = useLedger(apiClient, addToast);
+  const campaignsHook = useCampaigns(apiClient, addToast);
+  const targetGroupsHook = useTargetGroups(apiClient, addToast);
+  const attendeesHook = useAttendees(apiClient, addToast);
+  const audienceHook = useAudience(apiClient, runTaskInBackground, backgroundTasks, addToast);
+  const performanceHook = usePerformance(apiClient, runTaskInBackground, backgroundTasks, addToast);
 
 
   // --- Keyboard Shortcuts ---
@@ -325,7 +329,6 @@ const App: React.FC = () => {
     addToast,
     backgroundTasks,
     runTaskInBackground,
-    isRefreshingDetails: eventsHook.isRefreshingDetails,
     cancelTask,
     clearTask,
   };
@@ -409,7 +412,7 @@ const App: React.FC = () => {
         )}
         
         <div className="flex">
-          <aside className={`hidden md:flex flex-col bg-white dark:bg-slate-800 p-4 min-h-screen fixed transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-60' : 'w-20'}`}>
+          <aside className={`hidden md:flex flex-col bg-white dark:bg-slate-800 p-4 min-h-screen fixed transition-all duration-300 ease-in-out z-20 ${isSidebarOpen ? 'w-60' : 'w-20'}`}>
             <div className="h-8 mb-8 flex items-center justify-center relative">
               <Link to="/" className={`text-slate-900 dark:text-white text-2xl font-bold whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!isSidebarOpen}>
                 Billetto<span className="text-brand-primary">Stats</span>

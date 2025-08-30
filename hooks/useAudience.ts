@@ -1,22 +1,25 @@
 
 
+
+
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { AudienceMember, Order, Attendee, LedgerEntry, BackgroundTask, RunTaskInBackgroundSignature } from '../types';
-import { BillettoApiClient } from '../services/billettoService';
+import { BillettoApiClient, NotModifiedError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
+// Fix: Corrected import path for AddToastFn type
+import { AddToastFn } from '../types';
 
 const AUDIENCE_MEMBERS_PER_PAGE = 100;
 
-// Define keys for resumable analysis cache
 const STATE_KEY = 'audience_analysis_state';
 const RAW_ORDERS_KEY = 'audience_raw_orders';
 const RAW_ATTENDEES_KEY = 'audience_raw_attendees';
 const RAW_LEDGER_KEY = 'audience_raw_ledger';
 
 
-export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackground: RunTaskInBackgroundSignature, backgroundTasks: BackgroundTask[]) => {
+export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackground: RunTaskInBackgroundSignature, backgroundTasks: BackgroundTask[], addToast: AddToastFn) => {
     const [audience, setAudience] = useState<AudienceMember[]>([]);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [pagination, setPagination] = useState({ currentPage: 1 });
@@ -47,10 +50,14 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
         return filteredAudience.slice(start, end);
     }, [filteredAudience, pagination.currentPage]);
 
-    const performAnalysis = useCallback((forceRefresh = false) => {
+    const performAudienceAnalysis = useCallback((forceRefresh = false) => {
         if (!apiClient || loading) return;
 
-        const analysisTask = async (updateProgress: (progress: { value: number; message: string }) => void, isCancelled: () => boolean): Promise<AudienceMember[]> => {
+        const onRateLimit = (message: string) => {
+            addToast(message, 'info');
+        };
+
+        const analysisTask = async (updateProgress: (progress: { value: number; message: string }) => void, signal: AbortSignal): Promise<AudienceMember[]> => {
             if (!forceRefresh) {
                 const { audienceData } = await db.getAudienceCache();
                 if (audienceData) {
@@ -58,7 +65,6 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 }
             }
 
-            // --- Resumable fetching logic ---
             let state = await db.getAnalysisCache<{ orders: boolean, attendees: boolean, ledger: boolean }>(STATE_KEY) || { orders: false, attendees: false, ledger: false };
             if (forceRefresh) {
                 state = { orders: false, attendees: false, ledger: false };
@@ -69,44 +75,42 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 ]);
             }
             
-            let allOrders: Order[];
-            if (state.orders) {
-                allOrders = await db.getAnalysisCache(RAW_ORDERS_KEY) || [];
-                updateProgress({ message: 'Loaded cached orders.', value: 33 });
-            } else {
-                 updateProgress({ message: 'Fetching all orders...', value: 0 });
-                 allOrders = await fetchAllPaginatedData<Order>('/orders?expand=event', apiClient, 5, p => updateProgress({ message: `Fetching orders... (${p}%)`, value: (p / 100) * 33 }), isCancelled);
-                 await db.setAnalysisCache(RAW_ORDERS_KEY, allOrders);
-                 state.orders = true;
-                 await db.setAnalysisCache(STATE_KEY, state);
-            }
+            // FIX: Make this function generic and add explicit return types to fix type errors on map/reduce.
+            const fetchDataWithCacheAnd304 = async <T extends { id: string }>(
+                stateKey: 'orders' | 'attendees' | 'ledger',
+                rawKey: string,
+                endpoint: string,
+                progressStart: number,
+                progressWeight: number,
+                fetchMessage: string
+            ): Promise<T[]> => {
+                if (state[stateKey]) {
+                    updateProgress({ message: `Loaded cached ${stateKey}.`, value: progressStart + progressWeight });
+                    return (await db.getAnalysisCache(rawKey) as T[]) || [];
+                }
+                try {
+                    updateProgress({ message: fetchMessage, value: progressStart });
+                    const data = await fetchAllPaginatedData<T>(endpoint, apiClient!, 5, p => updateProgress({ message: `${fetchMessage} (${p}%)`, value: progressStart + (p / 100) * progressWeight }), signal, onRateLimit);
+                    await db.setAnalysisCache(rawKey, data);
+                    state[stateKey] = true;
+                    await db.setAnalysisCache(STATE_KEY, state);
+                    return data;
+                } catch (e) {
+                    if (e instanceof NotModifiedError) {
+                        updateProgress({ message: `Data for ${stateKey} is fresh (304).`, value: progressStart + progressWeight });
+                        state[stateKey] = true;
+                        await db.setAnalysisCache(STATE_KEY, state);
+                        return (await db.getAnalysisCache(rawKey) as T[]) || [];
+                    }
+                    throw e; // Re-throw other errors
+                }
+            };
+            
+            // FIX: Provide generic type arguments to ensure correct return types.
+            const allOrders = await fetchDataWithCacheAnd304<Order>('orders', RAW_ORDERS_KEY, '/orders?expand=event', 0, 33, 'Fetching all orders...');
+            const allAttendees = await fetchDataWithCacheAnd304<Attendee>('attendees', RAW_ATTENDEES_KEY, '/attendees?expand=event&sort=-created_at', 33, 33, 'Fetching all attendees...');
+            const allLedgerEntries = await fetchDataWithCacheAnd304<LedgerEntry>('ledger', RAW_LEDGER_KEY, '/ledger_entries', 66, 33, 'Fetching all financials...');
 
-            let allAttendees: Attendee[];
-            if (state.attendees) {
-                allAttendees = await db.getAnalysisCache(RAW_ATTENDEES_KEY) || [];
-                updateProgress({ message: 'Loaded cached attendees.', value: 66 });
-            } else {
-                updateProgress({ message: 'Fetching all attendees...', value: 33 });
-                allAttendees = await fetchAllPaginatedData<Attendee>('/attendees?expand=event&sort=-created_at', apiClient, 5, p => updateProgress({ message: `Fetching attendees... (${p}%)`, value: 33 + (p / 100) * 33 }), isCancelled);
-                await db.setAnalysisCache(RAW_ATTENDEES_KEY, allAttendees);
-                state.attendees = true;
-                await db.setAnalysisCache(STATE_KEY, state);
-            }
-
-            let allLedgerEntries: LedgerEntry[];
-            if (state.ledger) {
-                allLedgerEntries = await db.getAnalysisCache(RAW_LEDGER_KEY) || [];
-                updateProgress({ message: 'Loaded cached financials.', value: 99 });
-            } else {
-                updateProgress({ message: 'Fetching all financial records...', value: 66 });
-                allLedgerEntries = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries', apiClient, 5, p => updateProgress({ message: `Fetching financials... (${p}%)`, value: 66 + (p / 100) * 33 }), isCancelled);
-                await db.setAnalysisCache(RAW_LEDGER_KEY, allLedgerEntries);
-                state.ledger = true;
-                await db.setAnalysisCache(STATE_KEY, state);
-            }
-
-
-            // --- Analysis logic ---
             updateProgress({ message: 'Analyzing customer data...', value: 99 });
 
             const customerData: { [email: string]: Partial<AudienceMember> & { nameSet: Set<string> } } = {};
@@ -185,7 +189,6 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 });
             }
 
-            // --- Finalize and Cleanup ---
             await db.setAudienceCache(finalAudience);
             await db.setInKeyval('audience_last_updated', new Date());
 
@@ -208,9 +211,9 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 setLastUpdated(new Date());
             }
         );
-    }, [apiClient, loading, runTaskInBackground]);
+    }, [apiClient, loading, runTaskInBackground, addToast]);
 
-    const handlePageChange = (page: number) => {
+    const handleAudiencePageChange = (page: number) => {
         setPagination({ currentPage: page });
     };
     
@@ -230,13 +233,13 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
     return {
         audience: paginatedAudience,
         fullAudience: sortedAudience,
-        loading,
-        error,
-        lastUpdated,
-        progress,
-        performAnalysis,
-        pagination: { ...pagination, total: filteredAudience.length },
-        handlePageChange,
+        loadingAudience: loading,
+        audienceError: error,
+        lastUpdatedAudience: lastUpdated,
+        audienceProgress: progress,
+        performAudienceAnalysis,
+        audiencePagination: { ...pagination, total: filteredAudience.length },
+        handleAudiencePageChange,
         requestAudienceSort: requestSort,
         audienceSortConfig: sortConfig,
         activeSegment,

@@ -2,8 +2,7 @@
 
 import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea, Label } from 'recharts';
-import { CampaignTimeBlock } from '../types';
-import { Theme } from '../../App';
+import { CampaignTimeBlock, Theme } from '../types';
 
 interface SalesVelocityChartProps {
     data: { date: string; tickets: number; }[];

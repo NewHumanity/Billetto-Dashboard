@@ -1,3 +1,6 @@
+
+
+
 import React from 'react';
 import { useEvents } from '../hooks/useEvents';
 import { useOrders } from '../hooks/useOrders';
@@ -8,8 +11,8 @@ import { useAttendees } from '../hooks/useAttendees';
 import { useAudience } from '../hooks/useAudience';
 import { usePerformance } from '../hooks/usePerformance';
 import { BillettoApiClient } from '../services/billettoService';
-import { Theme, View } from '../App';
-import { ModalView, Toast, BackgroundTask } from '../types';
+// Fix: Import shared types from types.ts to avoid circular dependencies
+import { Theme, View, ModalView, Toast, BackgroundTask, RunTaskInBackgroundSignature } from '../types';
 
 // Combine the return types of all hooks into one giant context type
 export type AppContextType = 
@@ -29,13 +32,7 @@ export type AppContextType =
         toasts: Toast[];
         addToast: (message: string, type: Toast['type']) => void;
         backgroundTasks: BackgroundTask[];
-        runTaskInBackground: <T>(
-            id: string,
-            name: string,
-            taskFn: (updateProgress: (progress: { value: number; message: string }) => void, isCancelled: () => boolean) => Promise<T>,
-            onSuccess?: (result: T) => void
-        ) => void;
-        isRefreshingDetails: boolean;
+        runTaskInBackground: RunTaskInBackgroundSignature;
         cancelTask: (taskId: string) => void;
         clearTask: (taskId: string) => void;
     };

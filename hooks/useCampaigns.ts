@@ -2,10 +2,12 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Campaign, Order, LedgerEntry, ProcessedCampaign } from '../types';
-import { BillettoApiClient, BillettoApiError, BillettoErrorType } from '../services/billettoService';
+import { BillettoApiClient, BillettoApiError, BillettoErrorType, NotModifiedError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
+// Fix: Import from types.ts to break circular dependency
+import { AddToastFn } from '../types';
 
 const getCampaignScopeName = (event: Campaign['event']): string => {
     if (!event) return 'Global (Account-wide)';
@@ -14,7 +16,6 @@ const getCampaignScopeName = (event: Campaign['event']): string => {
     return 'Unknown Scope';
 };
 
-// Helper to process a single campaign for display and sorting
 const processCampaign = (campaign: Campaign): ProcessedCampaign => {
   const firstEffect = campaign.effects?.data?.[0];
   const discountEffectData = firstEffect?.data;
@@ -39,25 +40,61 @@ const processCampaign = (campaign: Campaign): ProcessedCampaign => {
   };
 };
 
-export const useCampaigns = (apiClient: BillettoApiClient | null) => {
+export const useCampaigns = (apiClient: BillettoApiClient | null, addToast: AddToastFn) => {
     const [campaigns, setCampaigns] = useState<ProcessedCampaign[]>([]);
     const [loadingCampaigns, setLoadingCampaigns] = useState<boolean>(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [campaignsError, setCampaignsError] = useState<string | null>(null);
     const [lastUpdatedCampaigns, setLastUpdatedCampaigns] = useState<Date | null>(null);
     const [analysisProgress, setAnalysisProgress] = useState<{ message: string; value: number } | null>(null);
 
-    // State for global search
     const [allCampaignsForSearch, setAllCampaignsForSearch] = useState<ProcessedCampaign[] | null>(null);
     const [loadingAllCampaigns, setLoadingAllCampaigns] = useState(false);
 
     const { items: sortedCampaigns, requestSort: requestCampaignSort, sortConfig: campaignSortConfig } = useSortableData<ProcessedCampaign>(campaigns, { key: 'usageCount', direction: 'descending' });
 
-    const performFinancialAnalysis = useCallback(async (force = false) => {
+    const onRateLimit = useCallback((message: string) => {
+        addToast(message, 'info');
+    }, [addToast]);
+
+    const fetchBasicCampaigns = useCallback(async (isBackgroundRefresh = false) => {
+        if (!apiClient) return;
+
+        if (isBackgroundRefresh) {
+            setIsRefreshing(true);
+        } else {
+            setLoadingCampaigns(true);
+        }
+        setCampaignsError(null);
+        try {
+            const response = await apiClient.getCampaigns(1, 100, ['event']);
+            setCampaigns(response.data.map(processCampaign));
+            await db.setCampaignsCache(1, response);
+            setLastUpdatedCampaigns(new Date());
+        } catch (err) {
+            if (err instanceof NotModifiedError) {
+                addToast('Campaign list is up to date.', 'info');
+                setLastUpdatedCampaigns(new Date());
+            } else if (err instanceof BillettoApiError) {
+                setCampaignsError(err.message);
+            } else if (err instanceof Error && err.name !== 'CancellationError') {
+                setCampaignsError('An unknown error occurred while fetching campaigns.');
+            }
+        } finally {
+            if (isBackgroundRefresh) {
+                setIsRefreshing(false);
+            } else {
+                setLoadingCampaigns(false);
+            }
+        }
+    }, [apiClient, addToast]);
+
+    const performFinancialAnalysis = useCallback(async (forceRefresh = false) => {
         if (!apiClient) return;
         setLoadingCampaigns(true);
         setCampaignsError(null);
 
-        if (!force) {
+        if (!forceRefresh) {
             const { campaigns: cached, lastUpdated } = await db.getProcessedCampaignsCache();
             if (cached) {
                 setCampaigns(cached);
@@ -69,10 +106,10 @@ export const useCampaigns = (apiClient: BillettoApiClient | null) => {
         
         try {
             setAnalysisProgress({ message: 'Fetching all campaigns...', value: 0 });
-            const allCampaignsData = await fetchAllPaginatedData<Campaign>('/campaigns?expand=event', apiClient);
+            const allCampaignsData = await fetchAllPaginatedData<Campaign>('/campaigns?expand=event', apiClient, 5, undefined, undefined, onRateLimit);
             
             setAnalysisProgress({ message: 'Fetching all financial records...', value: 10 });
-            const allLedgerEntries = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries', apiClient);
+            const allLedgerEntries = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries', apiClient, 5, undefined, undefined, onRateLimit);
             const ledgerMapByOrder = allLedgerEntries.reduce((map, entry) => {
                 if (entry.order_id) {
                     const orderId = String(entry.order_id);
@@ -105,13 +142,12 @@ export const useCampaigns = (apiClient: BillettoApiClient | null) => {
 
                 let campaignOrders: Order[] = [];
                 try {
-                    campaignOrders = await fetchAllPaginatedData<Order>(`/campaigns/${campaign.id}/orders?expand=order_lines`, apiClient);
+                    campaignOrders = await fetchAllPaginatedData<Order>(`/campaigns/${campaign.id}/orders?expand=order_lines`, apiClient, 5, undefined, undefined, onRateLimit);
                 } catch (e) {
                     if (e instanceof BillettoApiError && e.type === BillettoErrorType.NOT_FOUND) {
                         console.warn(`Campaign ${campaign.id} (${campaign.name}) seems to have no orders endpoint or is invalid. Assuming 0 orders.`);
                         campaignOrders = [];
                     } else {
-                        // For other errors, re-throw to be caught by the main catch block
                         throw e;
                     }
                 }
@@ -150,7 +186,6 @@ export const useCampaigns = (apiClient: BillettoApiClient | null) => {
                 const averageOrderValue = campaignOrders.length > 0 ? totalPayout / campaignOrders.length : 0;
                 const currency = campaignOrders[0]?.currency;
                 const investment = Math.abs(totalDiscounts);
-                // ROI is undefined if there was no investment (no discounts)
                 const roi = investment > 0 ? (netRevenue / investment) * 100 : undefined;
 
                 processedCampaignsWithFinance.push({
@@ -171,19 +206,24 @@ export const useCampaigns = (apiClient: BillettoApiClient | null) => {
             setLastUpdatedCampaigns(new Date());
 
         } catch (err) {
-             if (err instanceof BillettoApiError) setCampaignsError(err.message);
-             else setCampaignsError('An unknown error occurred during financial analysis.');
+             if (err instanceof NotModifiedError) {
+                console.log("Campaign financial analysis data is fresh (304).");
+                setLastUpdatedCampaigns(new Date());
+             } else if (err instanceof BillettoApiError) {
+                 setCampaignsError(err.message);
+             } else if (err instanceof Error && err.name !== 'CancellationError') {
+                 setCampaignsError('An unknown error occurred during financial analysis.');
+             }
         } finally {
             setLoadingCampaigns(false);
             setAnalysisProgress(null);
         }
-    }, [apiClient]);
+    }, [apiClient, onRateLimit]);
 
     const fetchAllCampaignsForSearch = useCallback(async () => {
         if (!apiClient || loadingAllCampaigns) return;
         setLoadingAllCampaigns(true);
         try {
-            // Re-use fully analyzed data if available, it's the most complete list.
             const { campaigns: cached } = await db.getProcessedCampaignsCache();
             if(cached) {
                 setAllCampaignsForSearch(cached);
@@ -191,58 +231,55 @@ export const useCampaigns = (apiClient: BillettoApiClient | null) => {
                 return;
             }
 
-            const data = await fetchAllPaginatedData<Campaign>('/campaigns?expand=event', apiClient);
+            const data = await fetchAllPaginatedData<Campaign>('/campaigns?expand=event', apiClient, 5, undefined, undefined, onRateLimit);
             setAllCampaignsForSearch(data.map(processCampaign));
-            // Note: We don't cache this basic list to avoid stale data conflicts with the full analysis.
-            // The search will simply trigger a live fetch if the analyzed data isn't cached.
         } catch (e) {
             console.error("Failed to fetch all campaigns for search:", e);
         } finally {
             setLoadingAllCampaigns(false);
         }
-    }, [apiClient, loadingAllCampaigns]);
+    }, [apiClient, loadingAllCampaigns, onRateLimit]);
 
     useEffect(() => {
         const loadInitialData = async () => {
-            if (!apiClient) return;
+            if (!apiClient) {
+                setLoadingCampaigns(false);
+                return;
+            };
+
             setLoadingCampaigns(true);
             const { campaigns: processed, lastUpdated } = await db.getProcessedCampaignsCache();
             if (processed) {
                 setCampaigns(processed);
                 if (lastUpdated) setLastUpdatedCampaigns(new Date(lastUpdated));
+                setLoadingCampaigns(false);
+                // No auto-refresh for this heavy view, user must trigger it.
             } else {
                  const { campaignsData: basic, lastUpdated: luBasic } = await db.getCampaignsCache(1);
                  if (basic) {
                     setCampaigns(basic.data.map(processCampaign));
                     if (luBasic) setLastUpdatedCampaigns(new Date(luBasic));
+                    setLoadingCampaigns(false);
+                    fetchBasicCampaigns(true); // stale-while-revalidate for basic data
                  } else {
-                    try {
-                        const response = await apiClient.getCampaigns(1, 100, ['event']);
-                        setCampaigns(response.data.map(processCampaign));
-                        await db.setCampaignsCache(1, response);
-                        setLastUpdatedCampaigns(new Date());
-                    } catch (err) {
-                        if (err instanceof BillettoApiError) setCampaignsError(err.message);
-                        else setCampaignsError('An unknown error occurred while fetching campaigns.');
-                    }
+                    fetchBasicCampaigns(false); // initial full load
                  }
             }
-            setLoadingCampaigns(false);
         };
 
         loadInitialData();
-    }, [apiClient]);
+    }, [apiClient, fetchBasicCampaigns]);
 
     return {
         sortedCampaigns, 
-        loadingCampaigns, 
+        loadingCampaigns,
+        isRefreshingCampaigns: isRefreshing,
         campaignsError, 
         lastUpdatedCampaigns,
         requestCampaignSort, 
         campaignSortConfig,
         performFinancialAnalysis,
         analysisProgress,
-        // For global search
         allCampaigns: allCampaignsForSearch,
         fetchAllCampaignsForSearch,
         loadingAllCampaigns,

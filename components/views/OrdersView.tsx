@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useContext } from 'react';
 import { OrderFilters } from '../../hooks/useOrders';
 import RefreshBar from '../RefreshBar';
@@ -17,7 +18,7 @@ const OrdersView: React.FC = () => {
     if (!context) throw new Error("OrdersView must be used within an AppContextProvider");
 
     const {
-        sortedOrders, loadingOrders, ordersError, lastUpdatedOrders,
+        orders, loadingOrders, isRefreshingOrders, ordersError, lastUpdatedOrders, fullSortedOrders,
         refreshOrders, ordersPagination, handleOrderPageChange,
         setModalView,
         requestOrderSort, orderSortConfig,
@@ -61,17 +62,18 @@ const OrdersView: React.FC = () => {
 
     return (
         <div className="animate-fade-in">
-            <RefreshBar lastUpdated={lastUpdatedOrders} loading={loadingOrders} onRefresh={refreshOrders} viewName="orders" />
+            <RefreshBar lastUpdated={lastUpdatedOrders} loading={loadingOrders} isRefreshing={isRefreshingOrders} onRefresh={refreshOrders} viewName="orders" />
             <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
                     <h2 className="text-xl font-semibold text-slate-900 dark:text-white">All Orders</h2>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => exportToCsv(sortedOrders, `billetto_orders_page_${ordersPagination.currentPage}_${new Date().toISOString().split('T')[0]}.csv`)}
+                            onClick={() => exportToCsv(fullSortedOrders || [], `billetto_all_orders_${new Date().toISOString().split('T')[0]}.csv`)}
                             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600"
+                            disabled={!fullSortedOrders || fullSortedOrders.length === 0}
                         >
                             <ExportIcon />
-                            <span>Export Page</span>
+                            <span>Export All</span>
                         </button>
                         <button 
                             onClick={() => setShowFilters(!showFilters)}
@@ -95,7 +97,7 @@ const OrdersView: React.FC = () => {
                                     name="q"
                                     value={localFilters.q}
                                     onChange={handleFilterChange}
-                                    placeholder="Name or email..."
+                                    placeholder="Name, email, or Order ID..."
                                     className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg p-2 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-primary"
                                 />
                             </div>
@@ -122,11 +124,11 @@ const OrdersView: React.FC = () => {
                     </div>
                 )}
 
-                {loadingOrders && sortedOrders.length === 0 ? <Loader /> :
+                {loadingOrders && orders.length === 0 ? <Loader /> :
                  ordersError ? <ErrorMessage message={ordersError} /> :
                     <>
                         <OrdersTable 
-                            orders={sortedOrders} 
+                            orders={orders} 
                             onSelectOrder={handleSelectOrder}
                             requestSort={requestOrderSort}
                             sortConfig={orderSortConfig} 
@@ -142,7 +144,6 @@ const OrdersView: React.FC = () => {
                     </>
                 }
             </div>
-            {/* The OrderDetailsModal is now rendered globally in App.tsx */}
         </div>
     );
 };

@@ -3,8 +3,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { SalesChannelData } from '../types';
-import { Theme } from '../../App';
+import { SalesChannelData, Theme } from '../types';
 
 interface SalesChannelChartProps {
     data: SalesChannelData[];

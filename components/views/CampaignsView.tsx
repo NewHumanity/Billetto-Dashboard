@@ -1,3 +1,4 @@
+
 import React, { useContext } from 'react';
 import RefreshBar from '../RefreshBar';
 import Loader from '../Loader';
@@ -13,7 +14,7 @@ const CampaignsView: React.FC = () => {
     if (!context) throw new Error("CampaignsView must be used within an AppContextProvider");
 
     const {
-        sortedCampaigns, loadingCampaigns, campaignsError, lastUpdatedCampaigns,
+        sortedCampaigns, loadingCampaigns, isRefreshingCampaigns, campaignsError, lastUpdatedCampaigns,
         requestCampaignSort, campaignSortConfig,
         setModalView,
         performFinancialAnalysis,
@@ -68,7 +69,7 @@ const CampaignsView: React.FC = () => {
 
     return (
         <div className="animate-fade-in">
-            <RefreshBar lastUpdated={lastUpdatedCampaigns} loading={loadingCampaigns && !analysisProgress} onRefresh={() => performFinancialAnalysis(true)} viewName="campaigns" />
+            <RefreshBar lastUpdated={lastUpdatedCampaigns} loading={loadingCampaigns && !analysisProgress} isRefreshing={isRefreshingCampaigns} onRefresh={() => performFinancialAnalysis(true)} viewName="campaigns" />
             <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
                     <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Marketing Campaigns</h2>

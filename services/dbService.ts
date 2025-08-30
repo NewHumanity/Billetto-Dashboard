@@ -1,9 +1,10 @@
 
+
 import { openDB, IDBPDatabase } from 'idb';
 import { BillettoEvent, ListResponse, Order, LedgerEntry, EventDetails, Campaign, TargetGroup, TargetGroupMember, Attendee, BookingQuestionsAnalysis, AudienceMember, ProcessedCampaign, AnalyzedEvent } from '../types';
 
 const DB_NAME = 'billetto-dashboard-cache';
-const DB_VERSION = 9; // Bump version for schema change
+const DB_VERSION = 11; // Bump version for new ETag store
 
 const STORES = {
     KEYVAL: 'keyval',
@@ -23,6 +24,7 @@ const STORES = {
     PROCESSED_CAMPAIGNS: 'processedCampaigns',
     PERFORMANCE_ANALYSIS: 'performanceAnalysis',
     ANALYSIS_CACHE: 'analysisCache',
+    ETAGS: 'etags',
 };
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -32,7 +34,7 @@ const initDB = () => {
         return dbPromise;
     }
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-        upgrade(db, oldVersion) {
+        upgrade(db, oldVersion, newVersion, tx) {
             if (!db.objectStoreNames.contains(STORES.KEYVAL)) {
                 db.createObjectStore(STORES.KEYVAL);
             }
@@ -98,6 +100,20 @@ const initDB = () => {
                     db.createObjectStore(STORES.ANALYSIS_CACHE);
                 }
             }
+            if (oldVersion < 10) {
+                const storesToClear = [STORES.ORDERS, STORES.LEDGER, STORES.ATTENDEES];
+                for (const storeName of storesToClear) {
+                    if (db.objectStoreNames.contains(storeName)) {
+                        console.log(`Clearing store ${storeName} for V10 migration.`);
+                        tx.objectStore(storeName).clear();
+                    }
+                }
+            }
+            if (oldVersion < 11) {
+                if (!db.objectStoreNames.contains(STORES.ETAGS)) {
+                    db.createObjectStore(STORES.ETAGS);
+                }
+            }
         },
     });
     return dbPromise;
@@ -110,6 +126,16 @@ const getFromKeyval = async (key: IDBValidKey) => {
 export const setInKeyval = async (key: IDBValidKey, val: any) => {
     const db = await initDB();
     return db.put(STORES.KEYVAL, val, key);
+};
+
+// --- ETag Management ---
+export const getETag = async (endpoint: string): Promise<string | undefined> => {
+    const db = await initDB();
+    return db.get(STORES.ETAGS, endpoint);
+};
+export const setETag = async (endpoint: string, etag: string) => {
+    const db = await initDB();
+    return db.put(STORES.ETAGS, etag, endpoint);
 };
 
 // --- Events ---
@@ -147,17 +173,17 @@ export const setBookingQuestionsAnalysisCache = async (eventId: string, analysis
 };
 
 
-// --- Orders ---
-export const getOrdersCache = async (cacheKey: string): Promise<{ ordersData?: ListResponse<Order>, lastUpdated?: Date }> => {
+// --- Orders (Full Dataset) ---
+export const getOrdersCache = async (): Promise<{ orders?: Order[], lastUpdated?: Date }> => {
     const db = await initDB();
     return {
-        ordersData: await db.get(STORES.ORDERS, cacheKey),
+        orders: await db.get(STORES.ORDERS, 'all_account_orders'),
         lastUpdated: await getFromKeyval('orders_last_updated')
     };
 };
-export const setOrdersCache = async (cacheKey: string, ordersData: ListResponse<Order>) => {
+export const setOrdersCache = async (orders: Order[]) => {
     const db = await initDB();
-    await db.put(STORES.ORDERS, ordersData, cacheKey);
+    await db.put(STORES.ORDERS, orders, 'all_account_orders');
     await setInKeyval('orders_last_updated', new Date());
 };
 
@@ -171,17 +197,17 @@ export const setOrderDetailsCache = async (details: Order) => {
     return db.put(STORES.ORDER_DETAILS, details);
 };
 
-// --- Ledger ---
-export const getLedgerCache = async (page: number): Promise<{ ledgerData?: ListResponse<LedgerEntry>, lastUpdated?: Date }> => {
+// --- Ledger (Full Dataset) ---
+export const getLedgerCache = async (): Promise<{ entries?: LedgerEntry[], lastUpdated?: Date }> => {
     const db = await initDB();
     return {
-        ledgerData: await db.get(STORES.LEDGER, `page-${page}`),
+        entries: await db.get(STORES.LEDGER, 'all_account_ledger'),
         lastUpdated: await getFromKeyval('ledger_last_updated')
     };
 };
-export const setLedgerCache = async (page: number, ledgerData: ListResponse<LedgerEntry>) => {
+export const setLedgerCache = async (entries: LedgerEntry[]) => {
     const db = await initDB();
-    await db.put(STORES.LEDGER, ledgerData, `page-${page}`);
+    await db.put(STORES.LEDGER, entries, 'all_account_ledger');
     await setInKeyval('ledger_last_updated', new Date());
 };
 
@@ -249,17 +275,17 @@ export const setTargetGroupMembersCache = async (groupId: string, page: number, 
     return db.put(STORES.TARGET_GROUP_MEMBERS, membersData, `${groupId}-page-${page}`);
 };
 
-// --- All Attendees ---
-export const getAttendeesCache = async (page: number): Promise<{ attendeesData?: ListResponse<Attendee>, lastUpdated?: Date }> => {
+// --- All Attendees (Full Dataset) ---
+export const getAttendeesCache = async (): Promise<{ attendees?: Attendee[], lastUpdated?: Date }> => {
     const db = await initDB();
     return {
-        attendeesData: await db.get(STORES.ATTENDEES, `page-${page}`),
+        attendees: await db.get(STORES.ATTENDEES, 'all_account_attendees'),
         lastUpdated: await getFromKeyval('attendees_last_updated')
     };
 };
-export const setAttendeesCache = async (page: number, attendeesData: ListResponse<Attendee>) => {
+export const setAttendeesCache = async (attendees: Attendee[]) => {
     const db = await initDB();
-    await db.put(STORES.ATTENDEES, attendeesData, `page-${page}`);
+    await db.put(STORES.ATTENDEES, attendees, 'all_account_attendees');
     await setInKeyval('attendees_last_updated', new Date());
 };
 
@@ -320,7 +346,12 @@ export const clearAnalysisCache = async (key: string) => {
 export const clearAllCache = async () => {
     const db = await initDB();
     try {
-        await Promise.all(Object.values(STORES).map(storeName => db.clear(storeName)));
+        const storeNames = Object.values(STORES);
+        const tx = db.transaction(storeNames, 'readwrite');
+        await Promise.all([
+            ...storeNames.map((store) => tx.objectStore(store).clear()),
+            tx.done,
+        ]);
         console.log('All cached data cleared.');
     } catch (error) {
         console.error("Failed to clear cache", error);

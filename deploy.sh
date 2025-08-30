@@ -47,8 +47,8 @@ else
     echo "'base' field not found, adding it using awk."
     # Add 'base' field after 'return {' using awk
     awk -v base_path="${BASE_PATH}" '1; /return {/ && !x { print "      base: \047" base_path "\047,"; x=1 }' "${VITE_CONFIG_PATH}" > temp_vite_config.ts
-    echo "Content of temp_vite_config.ts:"
-    cat temp_vite_config.ts
+    # echo "Content of temp_vite_config.ts:"
+    # cat temp_vite_config.ts
     mv temp_vite_config.ts "${VITE_CONFIG_PATH}"
 fi
 

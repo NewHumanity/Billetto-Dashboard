@@ -44,13 +44,28 @@ const CampaignDetailsView: React.FC<CampaignDetailsViewProps> = ({ campaignId, p
         setLoading(true);
         setError(null);
         
-        const foundCampaign = sortedCampaigns.find(c => c.id === campaignId);
-        if (!foundCampaign) {
-            setError('Campaign not found.'); setLoading(false); return;
-        }
-        setCampaign(foundCampaign);
-
         try {
+            // Get financially-analyzed campaign data from context
+            const processedCampaignFromContext = sortedCampaigns.find(c => c.id === campaignId);
+
+            // Fetch the detailed campaign object with all necessary expanded fields
+            const detailedCampaignFromApi = await apiClient.getCampaign(campaignId, ['event', 'conditions', 'effects', 'effects.data.ticket_types']);
+
+            if (!detailedCampaignFromApi) {
+                setError('Campaign not found or could not be fetched.');
+                setLoading(false);
+                return;
+            }
+            
+            // Merge the two: financial data from context, and detailed structure from the API call.
+            const finalCampaignData = {
+                ...processedCampaignFromContext,
+                ...detailedCampaignFromApi,
+            };
+
+            setCampaign(finalCampaignData as ProcessedCampaign);
+
+            // Fetch orders for this campaign
             const ordersResponse = await apiClient.getCampaignOrders(campaignId, 1, CAMPAIGN_ORDERS_PER_PAGE, ['event']);
             setOrders(ordersResponse.data);
             setPagination({ currentPage: 1, total: ordersResponse.total });

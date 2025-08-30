@@ -16,13 +16,13 @@ const PerformanceView: React.FC = () => {
 
     const {
         analyzedEvents,
-        loading,
-        error,
-        lastUpdated,
-        progress,
-        performAnalysis,
-        pagination,
-        handlePageChange,
+        loadingPerformance: loading,
+        performanceError: error,
+        lastUpdatedPerformance: lastUpdated,
+        performanceProgress: progress,
+        performPerformanceAnalysis,
+        performancePagination: pagination,
+        handlePerformancePageChange: handlePageChange,
         requestPerformanceSort,
         performanceSortConfig,
         navigateTo,
@@ -30,7 +30,7 @@ const PerformanceView: React.FC = () => {
     } = context;
 
     const refreshData = () => {
-        performAnalysis(true);
+        performPerformanceAnalysis(true);
     };
 
     const handleSelectEvent = (eventId: string) => {
@@ -54,7 +54,7 @@ const PerformanceView: React.FC = () => {
                     <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Analyze Event Profitability</h3>
                     <p className="mt-2 text-slate-500 dark:text-slate-400 max-w-md mx-auto">Run a one-time analysis to calculate the true net profit and rank all your events based on their financial performance.</p>
                     <button 
-                        onClick={() => performAnalysis(true)}
+                        onClick={() => performPerformanceAnalysis(true)}
                         disabled={loading}
                         className="mt-6 bg-brand-primary hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
                     >
