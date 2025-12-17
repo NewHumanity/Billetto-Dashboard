@@ -1,5 +1,4 @@
 
-
 import { useState, useCallback, useEffect } from 'react';
 import { TargetGroup, TargetGroupMember } from '../types';
 import { BillettoApiClient, BillettoApiError, NotModifiedError } from '../services/billettoService';
@@ -8,6 +7,7 @@ import { useSortableData } from './useSortableData';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
 // Fix: Import from types.ts to break circular dependency
 import { AddToastFn } from '../types';
+import { TargetGroupSchema } from '../schemas';
 
 const TARGET_GROUPS_PER_PAGE = 100;
 const MEMBERS_PER_PAGE = 100;
@@ -143,7 +143,7 @@ export const useTargetGroups = (apiClient: BillettoApiClient | null, addToast: A
                 return;
             }
 
-            const data = await fetchAllPaginatedData<TargetGroup>('/target_groups', apiClient, 5, undefined, undefined, onRateLimit);
+            const data = await fetchAllPaginatedData<TargetGroup>('/target_groups', apiClient, 5, undefined, undefined, onRateLimit, TargetGroupSchema);
             setAllTargetGroups(data);
             await db.setTargetGroupsCache(-1, { data, total: data.length } as any);
         } catch (e) {

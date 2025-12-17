@@ -1,3 +1,4 @@
+
 export * from './CalendarIcon';
 export * from './CurrencyIcon';
 export * from './TicketIcon';
@@ -40,3 +41,5 @@ export * from './PuzzleIcon';
 export * from './ClipboardListIcon';
 export * from './ClockIcon';
 export * from './TagIcon';
+export * from './CompareIcon';
+export * from './CalendarMonthIcon';

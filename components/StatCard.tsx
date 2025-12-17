@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { motion, useSpring, useMotionValue, useTransform } from 'framer-motion';
 
 interface StatCardProps {
   title: string;
@@ -7,9 +8,55 @@ interface StatCardProps {
   onClick?: () => void;
 }
 
+const AnimatedCounter: React.FC<{ value: string; className: string }> = ({ value, className }) => {
+  const ref = useRef<HTMLSpanElement>(null);
+  
+  // Extract number and formatting pattern
+  const numericMatch = value.match(/[\d,.]+/);
+  const numericPart = numericMatch ? numericMatch[0] : null;
+  
+  // If no valid number found (e.g. "N/A"), just render text
+  if (!numericPart) {
+      return <span className={className}>{value}</span>;
+  }
+
+  // Detect locale format (comma vs dot)
+  // Assuming "en-US" based on app utils (comma for thousands, dot for decimals)
+  const numericValue = parseFloat(numericPart.replace(/,/g, ''));
+  
+  const motionValue = useMotionValue(0);
+  const springValue = useSpring(motionValue, { damping: 30, stiffness: 100, duration: 1000 });
+  const rounded = useTransform(springValue, (latest) => latest);
+
+  useEffect(() => {
+    motionValue.set(numericValue);
+  }, [numericValue, motionValue]);
+
+  useEffect(() => {
+    const unsubscribe = rounded.on("change", (latest) => {
+      if (ref.current) {
+        // Simple formatting to match inputs like "1,234.56" or "100"
+        let formatted = '';
+        if (numericPart.includes('.')) {
+             // Preserve 2 decimal places if input had them
+             formatted = latest.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } else {
+             formatted = Math.round(latest).toLocaleString('en-US');
+        }
+        
+        // Reconstruct the string with prefix/suffix
+        const fullString = value.replace(numericPart, formatted);
+        ref.current.textContent = fullString;
+      }
+    });
+    return unsubscribe;
+  }, [rounded, value, numericPart]);
+
+  return <span ref={ref} className={className}>{value}</span>;
+};
+
 const StatCard: React.FC<StatCardProps> = ({ title, value, icon, onClick }) => {
   const isClickable = !!onClick;
-  const WrapperComponent = isClickable ? 'button' : 'div';
   
   // A threshold for switching to a two-line layout for very long values.
   const isLongValue = value.length > 12;
@@ -22,58 +69,58 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, onClick }) => {
     return 'text-xl';             // Largest font for up to 8 chars
   };
   
-  // Common props for the wrapper to reduce duplication
-  const wrapperProps = {
-      onClick: onClick,
-      disabled: !isClickable,
-  };
-  const baseClasses = `bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg w-full text-left transition-colors duration-300`;
+  const baseClasses = `bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg w-full text-left transition-colors duration-300 relative overflow-hidden`;
   const clickableClasses = isClickable ? 'hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer' : '';
 
-  if (isLongValue) {
-    // Layout for long values: icon and title on top, value below
-    return (
-        <WrapperComponent
-            {...wrapperProps}
-            className={`${baseClasses} ${clickableClasses} flex flex-col items-start justify-center`}
-        >
-            <div className="flex items-center space-x-2 w-full">
-                <div className="bg-brand-primary/20 text-brand-primary p-2 rounded-lg flex-shrink-0">
-                    {icon}
+  const Content = () => {
+      if (isLongValue) {
+        return (
+            <div className="flex flex-col items-start justify-center h-full">
+                <div className="flex items-center space-x-2 w-full">
+                    <div className="bg-brand-primary/20 text-brand-primary p-2 rounded-lg flex-shrink-0">
+                        {icon}
+                    </div>
+                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400 truncate" title={title}>
+                        {title}
+                    </p>
                 </div>
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400 truncate" title={title}>
-                    {title}
-                </p>
+                <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-white break-all" title={value}>
+                    <AnimatedCounter value={value} className="" />
+                </div>
             </div>
-            {/* Responsive font size and break-all for better wrapping of long numbers */}
-            <p className="text-2xl md:text-2xl font-bold text-slate-900 dark:text-white mt-2 break-all" title={value}>
-                {value}
-            </p>
-        </WrapperComponent>
-    );
-  } else {
-    // Default compact layout for shorter values
-    return (
-        <WrapperComponent
-            {...wrapperProps}
-            className={`${baseClasses} ${clickableClasses} flex items-center space-x-2`}
-        >
+        );
+      }
+      return (
+        <div className="flex items-center space-x-2">
             <div className="bg-brand-primary/20 text-brand-primary p-2 rounded-lg flex-shrink-0">
                 {icon}
             </div>
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400 truncate" title={title}>{title}</p>
-                {/* Apply dynamic font size and truncate with ellipsis if it still overflows */}
-                <p 
-                  className={`${valueFontSize()} font-bold text-slate-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis`}
-                  title={value}
-                >
-                  {value}
-                </p>
+                <div className={`${valueFontSize()} font-bold text-slate-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis`} title={value}>
+                    <AnimatedCounter value={value} className="" />
+                </div>
             </div>
-        </WrapperComponent>
-    );
-  }
+        </div>
+      );
+  };
+
+  return (
+    <motion.div
+        layout
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: isClickable ? 1.02 : 1 }}
+        whileTap={{ scale: isClickable ? 0.98 : 1 }}
+        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        className={`${baseClasses} ${clickableClasses}`}
+        onClick={onClick}
+        role={isClickable ? 'button' : undefined}
+        tabIndex={isClickable ? 0 : undefined}
+    >
+        <Content />
+    </motion.div>
+  );
 };
 
 export default StatCard;

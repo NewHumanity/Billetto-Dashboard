@@ -1,26 +1,32 @@
+
 import React, { useState, useContext, useMemo } from 'react';
 import { EventDetails, Attendee, TicketGroup, SortConfig, AvailableQuestion, GeographicSaleData, Theme } from '../types';
 import StatCard from './StatCard';
 import AttendeesTable from './EventsTable';
 import Pagination from './Pagination';
 import TicketTypesTable from './TicketTypesTable';
-import { CalendarIcon, TicketIcon, CurrencyIcon, TicketGroupIcon, UserIcon, FeeIcon, NetPayoutIcon, ExternalLinkIcon, QuestionIcon, CopyIcon, LedgerIcon, CalculatorIcon, MarketingIcon, NewsletterIcon, GlobeIcon, SearchIcon, XCircleIcon, RefundIcon, ChargebackIcon, OrganizationIcon, LocationIcon, CheckCircleIcon, ChevronDownIcon, ExportIcon, TargetGroupIcon, PuzzleIcon, ClipboardListIcon, ClockIcon } from './icons';
+import { CalendarIcon, TicketIcon, CurrencyIcon, TicketGroupIcon, UserIcon, FeeIcon, NetPayoutIcon, ExternalLinkIcon, QuestionIcon, CopyIcon, LedgerIcon, CalculatorIcon, MarketingIcon, NewsletterIcon, GlobeIcon, SearchIcon, XCircleIcon, RefundIcon, ChargebackIcon, OrganizationIcon, LocationIcon, CheckCircleIcon, ChevronDownIcon, ExportIcon, TargetGroupIcon, PuzzleIcon, ClipboardListIcon, ClockIcon, TeacherIcon } from './icons';
 import SalesVelocityChart from './SalesVelocityChart';
 import SalesChannelChart from './SalesChannelChart';
 import RevenueAttributionChart from './RevenueAttributionChart';
-import BookingQuestionsAnalysis from './BookingQuestionsAnalysis';
 import Loader from './Loader';
 import { StatCardSkeleton, ChartSkeleton, TableSkeleton } from './Skeleton';
 import LedgerDetailTable from './modal_tables/LedgerDetailTable';
 import OrdersDetailTable, { GrossRevenueDetailTable } from './modal_tables/OrdersDetailTable';
 import AttendeesDetailTable from './modal_tables/AttendeesDetailTable';
-// Fix: Corrected import path for Theme type
 import FeeBreakdownDetails from './FeeBreakdownDetails';
 import { AppContext } from '../contexts/AppContext';
 import SimpleBarChart from './EventsChart';
 import { exportToCsv } from '../utils/export';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import AttendeeDetailsView from './modal_views/AttendeeDetailsView';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ErrorBoundary } from './ErrorBoundary';
+
+// Lazy load BookingQuestionsAnalysis to isolate d3-cloud dependency
+const BookingQuestionsAnalysis = React.lazy(() => import('./BookingQuestionsAnalysis'));
+// Lazy load ReportButton to isolate @react-pdf/renderer dependency which may fail in some environments
+const ReportButton = React.lazy(() => import('./ReportButton'));
 
 
 interface DashboardProps {
@@ -56,13 +62,18 @@ const DetailsRefreshIndicator: React.FC<{ isRefreshing: boolean }> = ({ isRefres
   }
 
   return (
-    <div className="bg-brand-primary/10 text-brand-primary dark:bg-slate-700/50 dark:text-slate-300 text-sm font-semibold p-3 rounded-lg mb-6 flex items-center justify-center animate-fade-in">
+    <motion.div 
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+        className="bg-brand-primary/10 text-brand-primary dark:bg-slate-700/50 dark:text-slate-300 text-sm font-semibold p-3 rounded-lg mb-6 flex items-center justify-center overflow-hidden"
+    >
       <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
       <span>Refreshing data in the background... The view will update automatically.</span>
-    </div>
+    </motion.div>
   );
 };
 
@@ -135,20 +146,31 @@ const Dashboard: React.FC<DashboardProps> = ({
     isActive: boolean;
     onClick: () => void;
     icon: React.ReactNode;
-  }> = ({ label, count, isActive, onClick, icon }) => (
+    id: string;
+  }> = ({ label, count, isActive, onClick, icon, id }) => (
     <button
       onClick={onClick}
       role="tab"
       aria-selected={isActive}
-      className={`flex items-center whitespace-nowrap py-3 px-4 border-b-2 font-semibold text-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-primary rounded-t-md ${
+      className={`relative flex items-center whitespace-nowrap py-3 px-4 font-semibold text-sm transition-colors duration-200 focus:outline-none rounded-t-md ${
         isActive
-          ? 'border-brand-primary text-brand-primary'
-          : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-500'
+          ? 'text-brand-primary'
+          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
       }`}
     >
-      {icon}
-      <span className="ml-2">{label}</span>
-      {typeof count !== 'undefined' && <span className="ml-2 bg-gray-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold px-2 py-0.5 rounded-full">{(count || 0).toLocaleString()}</span>}
+      <span className="z-10 flex items-center">
+          {icon}
+          <span className="ml-2">{label}</span>
+          {typeof count !== 'undefined' && <span className="ml-2 bg-gray-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold px-2 py-0.5 rounded-full">{(count || 0).toLocaleString()}</span>}
+      </span>
+      {isActive && (
+          <motion.div 
+            layoutId="tab-underline"
+            className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-primary"
+            initial={false}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          />
+      )}
     </button>
   );
   
@@ -200,14 +222,19 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
         <DetailsRefreshIndicator isRefreshing={isRefreshing} />
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg">
+        
+        <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg"
+        >
             <div className="flex justify-between items-start gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
-                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight truncate" title={event.name}>{event.name}</h2>
+                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight truncate" title={event.name || ''}>{event.name || 'Untitled Event'}</h2>
                     <div className="flex items-center gap-3 mt-2 flex-wrap text-sm">
-                      <p className="text-slate-500 dark:text-slate-400">{new Date(event.starts_at).toLocaleString()}</p>
+                      <p className="text-slate-500 dark:text-slate-400">{event.starts_at ? new Date(event.starts_at).toLocaleString() : 'N/A'}</p>
                       <div 
                           className="flex items-center gap-1.5 text-slate-500 cursor-pointer hover:text-slate-800 dark:hover:text-slate-300 transition-colors"
                           onClick={() => handleCopy(event.id)}
@@ -241,15 +268,35 @@ const Dashboard: React.FC<DashboardProps> = ({
                         )}
                     </div>
                 </div>
-                <a 
-                    href={event.public_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex-shrink-0 flex items-center gap-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-brand-primary"
-                >
-                    <ExternalLinkIcon />
-                    <span>View on Billetto</span>
-                </a>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <ErrorBoundary fallback={
+                        <button disabled className="flex items-center justify-center gap-2 bg-gray-300 dark:bg-slate-700 text-gray-500 dark:text-gray-400 font-semibold py-2 px-4 rounded-lg cursor-not-allowed opacity-75">
+                            <TeacherIcon className="h-5 w-5" />
+                            <span>PDF Unavailable</span>
+                        </button>
+                    }>
+                        <React.Suspense fallback={
+                            <button disabled className="flex items-center justify-center gap-2 bg-indigo-600/50 text-white font-semibold py-2 px-4 rounded-lg cursor-wait">
+                                <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />
+                                <span>Loading...</span>
+                            </button>
+                        }>
+                            <ReportButton details={details} eventName={event.name || 'event'} />
+                        </React.Suspense>
+                    </ErrorBoundary>
+                    
+                    <motion.a 
+                        href={event.public_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="flex-shrink-0 flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-brand-primary"
+                    >
+                        <ExternalLinkIcon />
+                        <span>View on Billetto</span>
+                    </motion.a>
+                </div>
             </div>
             {(descriptionHtml || (editorial && typeof editorial === 'object' && editorial.tags && editorial.tags.length > 0)) && (
                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-700/50">
@@ -286,19 +333,21 @@ const Dashboard: React.FC<DashboardProps> = ({
                     )}
                 </div>
             )}
-        </div>
+        </motion.div>
 
         {/* Sub-navigation Tabs */}
         <div className="border-b border-gray-200 dark:border-slate-700">
             <div className="overflow-x-auto hide-scrollbar">
                 <nav className="-mb-px flex" aria-label="Tabs" role="tablist">
                     <TabButton 
+                        id="overview"
                         label="Overview"
                         isActive={activeSubView === 'overview'}
                         onClick={() => onSetSubView('overview')}
                         icon={<CalendarIcon/>}
                     />
                      <TabButton 
+                        id="attendees"
                         label="Attendees"
                         count={totalTicketsSold}
                         isActive={activeSubView === 'attendees'}
@@ -306,18 +355,21 @@ const Dashboard: React.FC<DashboardProps> = ({
                         icon={<UserIcon/>}
                     />
                     <TabButton 
+                        id="bookingQuestions"
                         label="Booking Questions"
                         isActive={activeSubView === 'bookingQuestions'}
                         onClick={() => onSetSubView('bookingQuestions')}
                         icon={<QuestionIcon/>}
                     />
                     <TabButton 
+                        id="checkin"
                         label="Check-in Analytics"
                         isActive={activeSubView === 'checkin'}
                         onClick={() => onSetSubView('checkin')}
                         icon={<CheckCircleIcon/>}
                     />
                     <TabButton 
+                        id="marketing"
                         label="Marketing"
                         isActive={activeSubView === 'marketing'}
                         onClick={() => onSetSubView('marketing')}
@@ -327,8 +379,17 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
         </div>
         
+        <AnimatePresence mode="wait">
         {activeSubView === 'overview' && (
-             <div className="space-y-8 animate-fade-in" role="tabpanel">
+             <motion.div 
+                key="overview"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-8" 
+                role="tabpanel"
+            >
                 {/* Stat Cards */}
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
                     {loading && !financialSummary ? (
@@ -375,7 +436,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <>
                         {/* Refund Analysis */}
                         {details.refundAnalysis && details.refundAnalysis.length > 0 && (
-                            <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                                 <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
                                     <ClipboardListIcon />
                                     <span className="ml-2">Refund & Cancellation Analysis</span>
@@ -390,19 +451,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     showValues={true}
                                     showPercentages={true}
                                 />
-                            </div>
+                            </motion.div>
                         )}
                         
                         {/* Sales Velocity Chart */}
                         {salesVelocity && salesVelocity.length > 0 && (
-                            <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                                 <SalesVelocityChart data={salesVelocity} theme={theme} campaigns={details.activeCampaigns} />
-                            </div>
+                            </motion.div>
                         )}
                         
                         {/* Purchase Lead Time Chart */}
                         {details.purchaseLeadTime && details.purchaseLeadTime.some(d => d.tickets > 0) && (
-                            <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                                 <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
                                     <CalendarIcon />
                                     <span className="ml-2">Purchase Lead Time</span>
@@ -414,26 +475,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     showValues={true}
                                     showPercentages={true}
                                 />
-                            </div>
+                            </motion.div>
                         )}
 
                         {/* Bottom row: Sales Channels, Attribution & Ticket Types */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             {salesByChannel && salesByChannel.length > 0 && (
-                                <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                                <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                                     <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Sales Channels</h3>
                                     <SalesChannelChart data={salesByChannel} theme={theme} />
-                                </div>
+                                </motion.div>
                             )}
                             {revenueBySource && revenueBySource.length > 0 && (
-                                <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
                                     <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Revenue Attribution</h3>
                                     <RevenueAttributionChart data={revenueBySource} currency={currency} theme={theme} />
-                                </div>
+                                </motion.div>
                             )}
                         </div>
                         {ticketGroups && ticketGroups.length > 0 && (
-                            <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg mt-8">
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg mt-8">
                                 <button
                                     className="w-full flex justify-between items-center text-left md:pointer-events-none"
                                     onClick={() => setIsTicketTypesExpanded(prev => !prev)}
@@ -454,15 +515,23 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         sortConfig={ticketGroupSortConfig}
                                     />
                                 </div>
-                            </div>
+                            </motion.div>
                         )}
                     </>
                 )}
-            </div>
+            </motion.div>
         )}
 
         {activeSubView === 'attendees' && (
-            <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg animate-fade-in" role="tabpanel">
+            <motion.div 
+                key="attendees"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.2 }}
+                className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg" 
+                role="tabpanel"
+            >
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                     <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
                         Attendees {hasActiveAttendeeFilter 
@@ -471,7 +540,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         }
                     </h3>
                     <button
-                        onClick={() => exportToCsv(filteredAttendees, `${event.name.replace(/ /g, '_')}_attendees_${new Date().toISOString().split('T')[0]}.csv`)}
+                        onClick={() => exportToCsv(filteredAttendees, `${(event.name || 'event').replace(/ /g, '_')}_attendees_${new Date().toISOString().split('T')[0]}.csv`)}
                         className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
                     >
                         <ExportIcon />
@@ -519,39 +588,61 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </button>
                 </div>
 
-                <AttendeesTable 
-                    attendees={attendees} 
-                    currency={currency}
-                    requestSort={requestAttendeeSort}
-                    sortConfig={attendeeSortConfig}
-                    onSelectAttendee={handleSelectAttendee}
-                    currentPage={attendeePage}
-                    itemsPerPage={attendeesPerPage}
-                />
-                <div className="mt-4">
-                    <Pagination
-                        currentPage={attendeePage}
-                        totalItems={filteredAttendeesCount}
-                        itemsPerPage={attendeesPerPage}
-                        onPageChange={onAttendeePageChange}
-                    />
-                </div>
-            </div>
+                {loading ? <TableSkeleton /> : (
+                    <>
+                        <AttendeesTable 
+                            attendees={attendees} 
+                            currency={currency}
+                            requestSort={requestAttendeeSort}
+                            sortConfig={attendeeSortConfig}
+                            onSelectAttendee={handleSelectAttendee}
+                            currentPage={attendeePage}
+                            itemsPerPage={attendeesPerPage}
+                        />
+                        <div className="mt-4">
+                            <Pagination
+                                currentPage={attendeePage}
+                                totalItems={filteredAttendeesCount}
+                                itemsPerPage={attendeesPerPage}
+                                onPageChange={onAttendeePageChange}
+                            />
+                        </div>
+                    </>
+                )}
+            </motion.div>
         )}
 
         {activeSubView === 'bookingQuestions' && (
-            loadingAnalysis ? <Loader message="Analyzing booking questions..." /> :
-            <BookingQuestionsAnalysis 
-                details={details} 
-                analysis={bookingQuestionsAnalysis} 
-                onTriggerAnalysis={onTriggerAnalysis} 
-                filterTicketGroupId={filterTicketGroupId}
-                onFilterChange={onFilterChange}
-            />
+            <motion.div 
+                key="bookingQuestions"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.2 }}
+            >
+                <React.Suspense fallback={<Loader message="Loading visualization module..." />}>
+                    {loadingAnalysis ? <Loader message="Analyzing booking questions..." /> :
+                    <BookingQuestionsAnalysis 
+                        details={details} 
+                        analysis={bookingQuestionsAnalysis} 
+                        onTriggerAnalysis={onTriggerAnalysis} 
+                        filterTicketGroupId={filterTicketGroupId}
+                        onFilterChange={onFilterChange}
+                    />}
+                </React.Suspense>
+            </motion.div>
         )}
 
         {activeSubView === 'checkin' && (
-            <div className="space-y-8 animate-fade-in" role="tabpanel">
+            <motion.div 
+                key="checkin"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-8" 
+                role="tabpanel"
+            >
                 {loading ? (
                     <div className="flex flex-col gap-8">
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -633,196 +724,215 @@ const Dashboard: React.FC<DashboardProps> = ({
                         );
                     })()
                 )}
-            </div>
+            </motion.div>
         )}
 
         {activeSubView === 'marketing' && (
-            <div className="space-y-8 animate-fade-in" role="tabpanel">
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                    <StatCard 
-                        title="Newsletter Opt-in Rate" 
-                        value={`${(stats.newsletterOptInRate || 0).toFixed(1)}%`}
-                        icon={<NewsletterIcon />} 
-                    />
+            loading ? (
+                <div className="space-y-8">
+                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                        <StatCardSkeleton />
+                    </div>
+                    <ChartSkeleton />
+                    <TableSkeleton />
                 </div>
-
-                {details.groupPurchaseAnalysis && details.groupPurchaseAnalysis.length > 0 && (
-                    <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
-                            <TargetGroupIcon />
-                            <span className="ml-2">"Bring-a-Friend" Index</span>
-                        </h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                            This chart shows the number of orders based on how many admission tickets were purchased together. A high number of orders with 2+ tickets suggests strong social attendance.
-                        </p>
-                        <SimpleBarChart
-                            data={details.groupPurchaseAnalysis}
-                            sortBy="none"
-                            colorScheme="purple"
-                            showValues={true}
-                            showPercentages={true}
+            ) : (
+                <motion.div 
+                    key="marketing"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.2 }}
+                    className="space-y-8" 
+                    role="tabpanel"
+                >
+                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                        <StatCard 
+                            title="Newsletter Opt-in Rate" 
+                            value={`${(stats.newsletterOptInRate || 0).toFixed(1)}%`}
+                            icon={<NewsletterIcon />} 
                         />
                     </div>
-                )}
 
-                {details.addonAffinity && details.addonAffinity.length > 0 && (
-                    <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
-                            <PuzzleIcon />
-                            <span className="ml-2">Add-on & Merchandise Affinity</span>
-                        </h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                            See which add-ons are most popular with buyers of specific admission tickets. Use these insights for targeted upselling opportunities.
-                        </p>
-                        <div className="space-y-6">
-                            {details.addonAffinity.map(affinity => (
-                                <div key={affinity.admissionTicketName} className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg border border-gray-200 dark:border-slate-700/50">
-                                    <h4 className="font-bold text-slate-800 dark:text-slate-200">{affinity.admissionTicketName}</h4>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Total Sold: {affinity.totalAdmissionTicketsSold.toLocaleString()}</p>
-                                    <ul className="space-y-3">
-                                        {affinity.topAddons.map(addon => (
-                                            <li key={addon.addonName}>
-                                                <div className="flex justify-between items-center text-sm mb-1 flex-wrap gap-x-2">
-                                                    <span className="font-semibold text-slate-700 dark:text-slate-300">{addon.addonName}</span>
-                                                    <span className="text-slate-500 dark:text-slate-400 text-xs font-medium">{addon.purchaseCount.toLocaleString()} purchases ({addon.affinity.toFixed(1)}% affinity)</span>
-                                                </div>
-                                                <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
-                                                    <div className="bg-teal-500 h-2 rounded-full" style={{ width: `${addon.affinity}%` }}></div>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            ))}
+                    {details.groupPurchaseAnalysis && details.groupPurchaseAnalysis.length > 0 && (
+                        <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
+                                <TargetGroupIcon />
+                                <span className="ml-2">"Bring-a-Friend" Index</span>
+                            </h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                                This chart shows the number of orders based on how many admission tickets were purchased together. A high number of orders with 2+ tickets suggests strong social attendance.
+                            </p>
+                            <SimpleBarChart
+                                data={details.groupPurchaseAnalysis}
+                                sortBy="none"
+                                colorScheme="purple"
+                                showValues={true}
+                                showPercentages={true}
+                            />
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {details.deadlineUrgency && details.deadlineUrgency.length > 0 && (
-                    <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
-                            <ClockIcon />
-                            <span className="ml-2">"Deadline Urgency" Impact</span>
-                        </h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                            This analysis tracks sales for ticket types with a specific sales deadline. Spikes in the final days indicate effective "last chance" marketing.
-                        </p>
-                        <div className="space-y-8">
-                            {details.deadlineUrgency.map(item => (
-                                <div key={item.ticketTypeName}>
-                                    <h4 className="font-bold text-slate-800 dark:text-slate-200">{item.ticketTypeName}</h4>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-                                        Sales ended {new Date(item.sellsToDate).toLocaleDateString()}. Total in last 8 days: {item.totalTicketsInWindow.toLocaleString()}
-                                    </p>
-                                    <div className="w-full h-48">
-                                        <ResponsiveContainer>
-                                            <LineChart data={item.salesData} margin={{ top: 5, right: 20, left: -10, bottom: 20 }}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
-                                                <XAxis 
-                                                    dataKey="daysBeforeDeadline"
-                                                    stroke={axisColor}
-                                                    tick={{ fontSize: 10 }}
-                                                    label={{ value: 'Days Before Deadline', position: 'insideBottom', offset: -15, fill: axisColor, fontSize: 12 }}
-                                                    reversed={true}
-                                                />
-                                                <YAxis 
-                                                    stroke={axisColor}
-                                                    allowDecimals={false}
-                                                    tick={{ fontSize: 10 }}
-                                                />
-                                                <Tooltip content={<CustomTooltip />} />
-                                                <Line 
-                                                    type="monotone" 
-                                                    dataKey="ticketsSold" 
-                                                    name="Tickets Sold"
-                                                    stroke="#ED8936" // orange color
-                                                    strokeWidth={2} 
-                                                    dot={{ r: 3 }}
-                                                    activeDot={{ r: 6 }}
-                                                />
-                                            </LineChart>
-                                        </ResponsiveContainer>
+                    {details.addonAffinity && details.addonAffinity.length > 0 && (
+                        <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
+                                <PuzzleIcon />
+                                <span className="ml-2">Add-on & Merchandise Affinity</span>
+                            </h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                                See which add-ons are most popular with buyers of specific admission tickets. Use these insights for targeted upselling opportunities.
+                            </p>
+                            <div className="space-y-6">
+                                {details.addonAffinity.map(affinity => (
+                                    <div key={affinity.admissionTicketName} className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg border border-gray-200 dark:border-slate-700/50">
+                                        <h4 className="font-bold text-slate-800 dark:text-slate-200">{affinity.admissionTicketName}</h4>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Total Sold: {affinity.totalAdmissionTicketsSold.toLocaleString()}</p>
+                                        <ul className="space-y-3">
+                                            {affinity.topAddons.map(addon => (
+                                                <li key={addon.addonName}>
+                                                    <div className="flex justify-between items-center text-sm mb-1 flex-wrap gap-x-2">
+                                                        <span className="font-semibold text-slate-700 dark:text-slate-300">{addon.addonName}</span>
+                                                        <span className="text-slate-500 dark:text-slate-400 text-xs font-medium">{addon.purchaseCount.toLocaleString()} purchases ({addon.affinity.toFixed(1)}% affinity)</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                                                        <div className="bg-teal-500 h-2 rounded-full" style={{ width: `${addon.affinity}%` }}></div>
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ul>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
-                    <div className="flex items-center gap-4 mb-4 flex-wrap">
-                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center">
-                            <GlobeIcon />
-                            <span className="ml-2">Geographic Hotspots</span>
-                        </h3>
-                        <select
-                            id="geo-ticket-type-filter"
-                            value={geoFilterTicketGroupId}
-                            onChange={(e) => setGeoFilterTicketGroupId(e.target.value)}
-                            disabled={ticketGroups.length === 0}
-                            className="ml-auto bg-gray-50 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-md p-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:opacity-50"
-                            aria-label="Filter geographic data by ticket type"
-                        >
-                            <option value="all">All Ticket Types</option>
-                            {ticketGroups.map(tg => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
-                        </select>
-                    </div>
+                    {details.deadlineUrgency && details.deadlineUrgency.length > 0 && (
+                        <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                            <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center">
+                                <ClockIcon />
+                                <span className="ml-2">"Deadline Urgency" Impact</span>
+                            </h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                                This analysis tracks sales for ticket types with a specific sales deadline. Spikes in the final days indicate effective "last chance" marketing.
+                            </p>
+                            <div className="space-y-8">
+                                {details.deadlineUrgency.map(item => (
+                                    <div key={item.ticketTypeName}>
+                                        <h4 className="font-bold text-slate-800 dark:text-slate-200">{item.ticketTypeName}</h4>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                                            Sales ended {new Date(item.sellsToDate).toLocaleDateString()}. Total in last 8 days: {item.totalTicketsInWindow.toLocaleString()}
+                                        </p>
+                                        <div className="w-full h-48">
+                                            <ResponsiveContainer>
+                                                <LineChart data={item.salesData} margin={{ top: 5, right: 20, left: -10, bottom: 20 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                                                    <XAxis 
+                                                        dataKey="daysBeforeDeadline"
+                                                        stroke={axisColor}
+                                                        tick={{ fontSize: 10 }}
+                                                        label={{ value: 'Days Before Deadline', position: 'insideBottom', offset: -15, fill: axisColor, fontSize: 12 }}
+                                                        reversed={true}
+                                                    />
+                                                    <YAxis 
+                                                        stroke={axisColor}
+                                                        allowDecimals={false}
+                                                        tick={{ fontSize: 10 }}
+                                                    />
+                                                    <Tooltip content={<CustomTooltip />} />
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="ticketsSold" 
+                                                        name="Tickets Sold"
+                                                        stroke="#ED8936" // orange color
+                                                        strokeWidth={2} 
+                                                        dot={{ r: 3 }}
+                                                        activeDot={{ r: 6 }}
+                                                    />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
-                            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">Sales by Country</h3>
-                            {(!filteredGeoData.countries || filteredGeoData.countries.length === 0) ? (
-                                <p className="text-slate-500 dark:text-slate-400 text-center py-8">No location data available for this selection.</p>
-                            ) : (
-                                <div className="overflow-x-auto max-h-96">
-                                    <table className="min-w-full">
-                                        <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
-                                            <tr>
-                                                <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Country</th>
-                                                <th className="py-2 px-4 text-right text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Tickets Sold</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                                            {filteredGeoData.countries.map(c => (
-                                                <tr key={c.name}>
-                                                    <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300">{c.name}</td>
-                                                    <td className="py-2 px-4 text-sm text-slate-900 dark:text-white font-medium text-right">{c.count.toLocaleString()}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
+                    <div className="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg">
+                        <div className="flex items-center gap-4 mb-4 flex-wrap">
+                            <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center">
+                                <GlobeIcon />
+                                <span className="ml-2">Geographic Hotspots</span>
+                            </h3>
+                            <select
+                                id="geo-ticket-type-filter"
+                                value={geoFilterTicketGroupId}
+                                onChange={(e) => setGeoFilterTicketGroupId(e.target.value)}
+                                disabled={ticketGroups.length === 0}
+                                className="ml-auto bg-gray-50 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-md p-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:opacity-50"
+                                aria-label="Filter geographic data by ticket type"
+                            >
+                                <option value="all">All Ticket Types</option>
+                                {ticketGroups.map(tg => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
+                            </select>
                         </div>
-                        <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
-                            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">Top 10 Cities by Sales</h3>
-                            {(!filteredGeoData.cities || filteredGeoData.cities.length === 0) ? (
-                                <p className="text-slate-500 dark:text-slate-400 text-center py-8">No city data available for this selection.</p>
-                            ) : (
-                                <div className="overflow-x-auto max-h-96">
-                                    <table className="min-w-full">
-                                        <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
-                                            <tr>
-                                                <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">City</th>
-                                                <th className="py-2 px-4 text-right text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Tickets Sold</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-                                            {filteredGeoData.cities.slice(0, 10).map(c => (
-                                                <tr key={c.name}>
-                                                    <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300">{c.name}</td>
-                                                    <td className="py-2 px-4 text-sm text-slate-900 dark:text-white font-medium text-right">{c.count.toLocaleString()}</td>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">Sales by Country</h3>
+                                {(!filteredGeoData.countries || filteredGeoData.countries.length === 0) ? (
+                                    <p className="text-slate-500 dark:text-slate-400 text-center py-8">No location data available for this selection.</p>
+                                ) : (
+                                    <div className="overflow-x-auto max-h-96">
+                                        <table className="min-w-full">
+                                            <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
+                                                <tr>
+                                                    <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Country</th>
+                                                    <th className="py-2 px-4 text-right text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Tickets Sold</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                                                {filteredGeoData.countries.map(c => (
+                                                    <tr key={c.name}>
+                                                        <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300">{c.name}</td>
+                                                        <td className="py-2 px-4 text-sm text-slate-900 dark:text-white font-medium text-right">{c.count.toLocaleString()}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg">
+                                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">Top 10 Cities by Sales</h3>
+                                {(!filteredGeoData.cities || filteredGeoData.cities.length === 0) ? (
+                                    <p className="text-slate-500 dark:text-slate-400 text-center py-8">No city data available for this selection.</p>
+                                ) : (
+                                    <div className="overflow-x-auto max-h-96">
+                                        <table className="min-w-full">
+                                            <thead className="bg-gray-100 dark:bg-slate-900/80 sticky top-0">
+                                                <tr>
+                                                    <th className="py-2 px-4 text-left text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">City</th>
+                                                    <th className="py-2 px-4 text-right text-xs font-semibold text-slate-700 dark:text-white uppercase tracking-wider">Tickets Sold</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                                                {filteredGeoData.cities.slice(0, 10).map(c => (
+                                                    <tr key={c.name}>
+                                                        <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300">{c.name}</td>
+                                                        <td className="py-2 px-4 text-sm text-slate-900 dark:text-white font-medium text-right">{c.count.toLocaleString()}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                </motion.div>
+            )
         )}
+        </AnimatePresence>
     </div>
   );
 };

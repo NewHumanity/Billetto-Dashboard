@@ -82,7 +82,9 @@ export const GrossRevenueDetailTable: React.FC<GrossRevenueDetailTableProps> = (
             }
         });
 
-        const orderMap = new Map(orders.map(o => [o.id, o]));
+        const orderMap = new Map<string, Order>();
+        orders.forEach(o => orderMap.set(o.id, o));
+
         const result: (Order & { grossRevenue: number })[] = [];
 
         for (const [orderId, grossRevenue] of grossRevenueByOrder.entries()) {

@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
           if (cachedResponse) {
             return cachedResponse;
           }
-          console.warn('ServiceWorker: fetch failed and no cache hit for', event.request.url, err);
+          // Fail silently
       });
       // Return cached response immediately if available, and fetch in background
       return cachedResponse || fetchPromise;

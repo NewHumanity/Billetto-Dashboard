@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { BillettoEvent, EventListItemType } from '../types';
 import { CalendarIcon, CurrencyIcon } from './icons';
@@ -21,7 +20,8 @@ const stateColorMap: { [key: string]: string } = {
     default: 'bg-slate-200 dark:bg-slate-600/50 text-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-500/50'
 };
 
-const formatDate = (dateString: string) => {
+const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-GB', {
         year: 'numeric',
         month: 'short',
@@ -52,7 +52,7 @@ const SingleEventRow: React.FC<{ event: BillettoEvent, isSelected: boolean, onSe
             onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect()}>
             <div className="flex justify-between items-start">
                 <p className={`font-semibold pr-2 ${isSelected ? 'text-brand-primary dark:text-white' : 'text-slate-800 dark:text-slate-200'} ${isChild ? 'text-sm' : 'text-base'}`}>
-                    {event.name}
+                    {event.name || 'Untitled Event'}
                 </p>
                 <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize whitespace-nowrap ${stateColorMap[event.state] || stateColorMap.default}`}>
                     {(event.state || '').replace('_', ' ')}
@@ -153,7 +153,7 @@ const EventListItem: React.FC<EventListItemProps> = ({ item, isSelected, onSelec
                             <ChevronDownIcon className={`w-5 h-5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                         </button>
                         <p className={`font-semibold text-base ${groupIsSelected ? 'text-brand-primary dark:text-white' : 'text-slate-800 dark:text-slate-200'}`}>
-                            {group.name}
+                            {group.name || 'Untitled Group'}
                         </p>
                     </div>
                     <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize whitespace-nowrap bg-purple-100 dark:bg-purple-500/20 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30`}>

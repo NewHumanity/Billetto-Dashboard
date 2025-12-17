@@ -1,5 +1,4 @@
-
-import React, { useContext } from 'react';
+import React, { useContext, useState, useMemo, useEffect } from 'react';
 import RefreshBar from '../RefreshBar';
 import Loader from '../Loader';
 import ErrorMessage from '../ErrorMessage';
@@ -8,8 +7,9 @@ import TargetGroupMembersTable from '../TargetGroupMembersTable';
 import Pagination from '../Pagination';
 import { AppContext } from '../../contexts/AppContext';
 import { TargetGroup, SegmentRule } from '../../types';
-import { ExportIcon } from '../icons';
+import { ExportIcon, SearchIcon } from '../icons';
 import { exportToCsv } from '../../utils/export';
+import { TableSkeleton } from '../Skeleton';
 
 const TARGET_GROUPS_PER_PAGE = 100;
 const MEMBERS_PER_PAGE = 100;
@@ -56,6 +56,26 @@ const TargetGroupsView: React.FC = () => {
         requestMemberSort, memberSortConfig
     } = context;
 
+    const [memberSearchQuery, setMemberSearchQuery] = useState('');
+
+    useEffect(() => {
+        setMemberSearchQuery('');
+    }, [selectedTargetGroupId]);
+
+    const filteredMembers = useMemo(() => {
+        if (!memberSearchQuery) {
+            return sortedTargetGroupMembers;
+        }
+        const lowerCaseQuery = memberSearchQuery.toLowerCase();
+        return sortedTargetGroupMembers.filter(member => {
+            const nameMatch = member.name?.toLowerCase().includes(lowerCaseQuery) || false;
+            const emailMatch = member.email?.toLowerCase().includes(lowerCaseQuery) || false;
+            const codeMatch = member.code?.toLowerCase().includes(lowerCaseQuery) || false;
+            return nameMatch || emailMatch || codeMatch;
+        });
+    }, [sortedTargetGroupMembers, memberSearchQuery]);
+
+
     const selectedGroup = selectedTargetGroupId 
         ? sortedTargetGroups.find(g => g.id === selectedTargetGroupId) 
         : undefined;
@@ -75,7 +95,7 @@ const TargetGroupsView: React.FC = () => {
                             <span>Export Page</span>
                         </button>
                     </div>
-                    {loadingTargetGroups && sortedTargetGroups.length === 0 ? <Loader /> :
+                    {loadingTargetGroups && sortedTargetGroups.length === 0 ? <TableSkeleton /> :
                      targetGroupsError ? <ErrorMessage message={targetGroupsError} /> :
                         <>
                             <TargetGroupsTable
@@ -126,12 +146,25 @@ const TargetGroupsView: React.FC = () => {
                                     <span className="text-slate-500 dark:text-slate-400 font-normal ml-2">({(membersPagination.total || 0).toLocaleString()})</span>
                                 )}
                             </h3>
-                             {loadingMembers ? <Loader message="Loading members..." /> :
+                             {loadingMembers ? <TableSkeleton /> :
                              membersError ? <ErrorMessage message={membersError} /> :
                                 <>
+                                    <div className="relative mb-4">
+                                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                                            <SearchIcon />
+                                        </span>
+                                        <input
+                                            type="search"
+                                            placeholder="Search displayed members..."
+                                            value={memberSearchQuery}
+                                            onChange={(e) => setMemberSearchQuery(e.target.value)}
+                                            className="w-full bg-white dark:bg-slate-900/50 border border-gray-300 dark:border-slate-600 rounded-lg py-2 pl-10 pr-4 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                        />
+                                    </div>
+
                                     <div className="flex-grow overflow-y-auto">
                                         <TargetGroupMembersTable 
-                                            members={sortedTargetGroupMembers}
+                                            members={filteredMembers}
                                             requestSort={requestMemberSort}
                                             sortConfig={memberSortConfig}
                                         />

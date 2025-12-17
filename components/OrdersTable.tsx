@@ -1,13 +1,12 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Order, SortConfig } from '../types';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 interface OrdersTableProps {
   orders: Order[];
   onSelectOrder: (orderId: string) => void;
   requestSort: (key: keyof Order | string) => void;
   sortConfig: SortConfig<Order> | null;
-  currentPage: number;
-  itemsPerPage: number;
 }
 
 const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }) => {
@@ -21,8 +20,16 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
     return <svg xmlns="http://www.w3.org/2000/svg" className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
 };
 
-const OrdersTable: React.FC<OrdersTableProps> = ({ orders, onSelectOrder, requestSort, sortConfig, currentPage, itemsPerPage }) => {
-    
+const OrdersTable: React.FC<OrdersTableProps> = ({ orders, onSelectOrder, requestSort, sortConfig }) => {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: orders.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 60, // Estimated row height
+    overscan: 10,
+  });
+
   const formatCurrency = (value: number, currencyCode: string) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -63,12 +70,16 @@ const OrdersTable: React.FC<OrdersTableProps> = ({ orders, onSelectOrder, reques
     return <p className="text-slate-500 dark:text-slate-400 text-center py-8">No orders found for this account.</p>;
   }
 
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const paddingBottom = virtualItems.length > 0 ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
+
   return (
-    <div className="overflow-x-auto">
+    <div ref={parentRef} className="overflow-y-auto max-h-[70vh] border border-gray-200 dark:border-slate-700 rounded-lg">
       <table className="min-w-full responsive-table">
-        <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0">
+        <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0 z-10 shadow-sm">
           <tr>
-            <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 dark:text-white">#</th>
+            <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 dark:text-white w-16">#</th>
             <SortableHeader title="Order ID" sortKey="id" />
             <SortableHeader title="Date" sortKey="created_at" />
             <SortableHeader title="Buyer" sortKey="buyer_name" />
@@ -78,30 +89,43 @@ const OrdersTable: React.FC<OrdersTableProps> = ({ orders, onSelectOrder, reques
           </tr>
         </thead>
         <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800/50">
-          {orders.map((order, index) => (
-            <tr 
-              key={order.id} 
-              className="md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50 transition-colors duration-200 cursor-pointer"
-              onClick={() => onSelectOrder(order.id)}
-              tabIndex={0}
-              onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectOrder(order.id)}
-              aria-label={`View details for order ${order.id}`}
-            >
-              <td data-label="#" className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-500 dark:text-slate-400">
-                {(currentPage - 1) * itemsPerPage + index + 1}
-              </td>
-              <td data-label="Order ID" className="whitespace-nowrap py-4 px-4 text-sm font-mono text-brand-primary/90 dark:text-brand-primary/80 hover:text-brand-primary">{order.id.split('-')[0]}...</td>
-              <td data-label="Date" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{formatDate(order.created_at)}</td>
-              <td data-label="Buyer" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-slate-900 dark:text-white">{order.buyer_name}</td>
-              <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300 truncate max-w-xs">{(order.event && typeof order.event === 'object') ? order.event.name : 'N/A'}</td>
-              <td data-label="Status" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColorMap[order.state] || statusColorMap.default}`}>
-                    {order.state}
-                </span>
-              </td>
-              <td data-label="Total Payout" className="whitespace-nowrap py-4 px-4 text-sm text-slate-800 dark:text-slate-100 font-semibold">{formatCurrency(order.payout, order.currency)}</td>
+          {paddingTop > 0 && (
+            <tr>
+              <td style={{ height: `${paddingTop}px` }} />
             </tr>
-          ))}
+          )}
+          {virtualItems.map((virtualRow) => {
+            const order = orders[virtualRow.index];
+            return (
+              <tr 
+                key={order.id} 
+                className="md:hover:bg-gray-100 dark:md:hover:bg-slate-700/50 transition-colors duration-200 cursor-pointer"
+                onClick={() => onSelectOrder(order.id)}
+                tabIndex={0}
+                onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectOrder(order.id)}
+                aria-label={`View details for order ${order.id}`}
+              >
+                <td data-label="#" className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-500 dark:text-slate-400">
+                  {virtualRow.index + 1}
+                </td>
+                <td data-label="Order ID" className="whitespace-nowrap py-4 px-4 text-sm font-mono text-brand-primary/90 dark:text-brand-primary/80 hover:text-brand-primary">{order.id.split('-')[0]}...</td>
+                <td data-label="Date" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{formatDate(order.created_at)}</td>
+                <td data-label="Buyer" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-slate-900 dark:text-white">{order.buyer_name}</td>
+                <td data-label="Event" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300 truncate max-w-xs">{(order.event && typeof order.event === 'object') ? order.event.name : 'N/A'}</td>
+                <td data-label="Status" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColorMap[order.state] || statusColorMap.default}`}>
+                      {order.state}
+                  </span>
+                </td>
+                <td data-label="Total Payout" className="whitespace-nowrap py-4 px-4 text-sm text-slate-800 dark:text-slate-100 font-semibold">{formatCurrency(order.payout, order.currency)}</td>
+              </tr>
+            );
+          })}
+          {paddingBottom > 0 && (
+            <tr>
+              <td style={{ height: `${paddingBottom}px` }} />
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

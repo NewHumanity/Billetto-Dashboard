@@ -1,15 +1,15 @@
 
-
-
-
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AudienceMember, Order, Attendee, LedgerEntry, BackgroundTask, RunTaskInBackgroundSignature } from '../types';
 import { BillettoApiClient, NotModifiedError } from '../services/billettoService';
 import * as db from '../services/dbService';
 import { useSortableData } from './useSortableData';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
-// Fix: Corrected import path for AddToastFn type
 import { AddToastFn } from '../types';
+import * as Comlink from 'comlink';
+import type { AnalysisWorkerApi } from '../workers/analysis.worker';
+import { OrderSchema, AttendeeSchema, LedgerEntrySchema } from '../schemas';
+import { analyzeAudience } from '../utils/analysisLogic';
 
 const AUDIENCE_MEMBERS_PER_PAGE = 100;
 
@@ -24,6 +24,25 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [pagination, setPagination] = useState({ currentPage: 1 });
     const [activeSegment, setActiveSegment] = useState('All');
+
+    const workerRef = useRef<Worker | null>(null);
+    const workerApiRef = useRef<Comlink.Remote<AnalysisWorkerApi> | null>(null);
+
+    useEffect(() => {
+        try {
+            // Use standard ES Module worker initialization
+            // Wrapped in try-catch to handle environments like AIStudio where import.meta.url might be restricted
+            workerRef.current = new Worker(new URL('../workers/analysis.worker.ts', import.meta.url), { type: 'module' });
+            workerApiRef.current = Comlink.wrap<AnalysisWorkerApi>(workerRef.current!);
+        } catch (e) {
+            console.warn("Worker initialization failed. Analysis will run on the main thread.", e);
+            // We do not toast here to avoid bothering the user; we'll fallback silently.
+        }
+        
+        return () => {
+            workerRef.current?.terminate();
+        };
+    }, []);
 
     const taskStatus = useMemo(() => {
         return backgroundTasks.find(task => task.id === 'audience-analysis');
@@ -51,7 +70,9 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
     }, [filteredAudience, pagination.currentPage]);
 
     const performAudienceAnalysis = useCallback((forceRefresh = false) => {
-        if (!apiClient || loading) return;
+        if (!apiClient || loading) {
+            return;
+        }
 
         const onRateLimit = (message: string) => {
             addToast(message, 'info');
@@ -75,14 +96,14 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 ]);
             }
             
-            // FIX: Make this function generic and add explicit return types to fix type errors on map/reduce.
             const fetchDataWithCacheAnd304 = async <T extends { id: string }>(
                 stateKey: 'orders' | 'attendees' | 'ledger',
                 rawKey: string,
                 endpoint: string,
                 progressStart: number,
                 progressWeight: number,
-                fetchMessage: string
+                fetchMessage: string,
+                schema: any
             ): Promise<T[]> => {
                 if (state[stateKey]) {
                     updateProgress({ message: `Loaded cached ${stateKey}.`, value: progressStart + progressWeight });
@@ -90,7 +111,7 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                 }
                 try {
                     updateProgress({ message: fetchMessage, value: progressStart });
-                    const data = await fetchAllPaginatedData<T>(endpoint, apiClient!, 5, p => updateProgress({ message: `${fetchMessage} (${p}%)`, value: progressStart + (p / 100) * progressWeight }), signal, onRateLimit);
+                    const data = await fetchAllPaginatedData<T>(endpoint, apiClient!, 5, p => updateProgress({ message: `${fetchMessage} (${p}%)`, value: progressStart + (p / 100) * progressWeight }), signal, onRateLimit, schema);
                     await db.setAnalysisCache(rawKey, data);
                     state[stateKey] = true;
                     await db.setAnalysisCache(STATE_KEY, state);
@@ -102,92 +123,26 @@ export const useAudience = (apiClient: BillettoApiClient | null, runTaskInBackgr
                         await db.setAnalysisCache(STATE_KEY, state);
                         return (await db.getAnalysisCache(rawKey) as T[]) || [];
                     }
-                    throw e; // Re-throw other errors
+                    throw e; 
                 }
             };
             
-            // FIX: Provide generic type arguments to ensure correct return types.
-            const allOrders = await fetchDataWithCacheAnd304<Order>('orders', RAW_ORDERS_KEY, '/orders?expand=event', 0, 33, 'Fetching all orders...');
-            const allAttendees = await fetchDataWithCacheAnd304<Attendee>('attendees', RAW_ATTENDEES_KEY, '/attendees?expand=event&sort=-created_at', 33, 33, 'Fetching all attendees...');
-            const allLedgerEntries = await fetchDataWithCacheAnd304<LedgerEntry>('ledger', RAW_LEDGER_KEY, '/ledger_entries', 66, 33, 'Fetching all financials...');
+            const allOrders = await fetchDataWithCacheAnd304<Order>('orders', RAW_ORDERS_KEY, '/orders?expand=event', 0, 33, 'Fetching all orders...', OrderSchema);
+            const allAttendees = await fetchDataWithCacheAnd304<Attendee>('attendees', RAW_ATTENDEES_KEY, '/attendees?expand=event&sort=-created_at', 33, 33, 'Fetching all attendees...', AttendeeSchema);
+            const allLedgerEntries = await fetchDataWithCacheAnd304<LedgerEntry>('ledger', RAW_LEDGER_KEY, '/ledger_entries', 66, 33, 'Fetching all financials...', LedgerEntrySchema);
 
             updateProgress({ message: 'Analyzing customer data...', value: 99 });
 
-            const customerData: { [email: string]: Partial<AudienceMember> & { nameSet: Set<string> } } = {};
-            const orderMap = new Map<string, Order>(allOrders.map(o => [o.id, o]));
-
-            allAttendees.forEach(attendee => {
-                const email = attendee.email.toLowerCase();
-                if (!customerData[email]) {
-                    customerData[email] = { attendees: [], nameSet: new Set() };
-                }
-                customerData[email].attendees!.push(attendee);
-                if (attendee.name) customerData[email].nameSet!.add(attendee.name);
-            });
-            
-            allOrders.forEach(order => {
-                const email = order.email.toLowerCase();
-                 if (!customerData[email]) {
-                    customerData[email] = { attendees: [], nameSet: new Set() };
-                }
-                if (!customerData[email].orders) customerData[email].orders = [];
-                customerData[email].orders!.push(order);
-                if (order.buyer_name) customerData[email].nameSet!.add(order.buyer_name);
-            });
-            
-            allLedgerEntries.forEach(entry => {
-                if (entry.entry_type === 'ORDER_REVENUE' && entry.order_id) {
-                    const order = orderMap.get(String(entry.order_id));
-                    if (order) {
-                        const email = order.email.toLowerCase();
-                        if (customerData[email]) {
-                            customerData[email].totalSpent = (customerData[email].totalSpent || 0) + entry.amount;
-                            if (!customerData[email].currency) customerData[email].currency = entry.currency;
-                        }
-                    }
-                }
-            });
-
-            const finalAudience: AudienceMember[] = Object.entries(customerData).map(([email, data]) => {
-                const attendees = data.attendees || [];
-                const uniqueEventIds = new Set(attendees.map(a => typeof a.event === 'object' ? a.event.id : a.event).filter(Boolean));
-                const lastAttendedEvent = attendees.length > 0 ? attendees.reduce((latest, current) => (new Date(typeof current.event === 'object' ? current.event.starts_at : 0) > new Date(typeof latest.event === 'object' ? latest.event.starts_at : 0) ? current : latest)).event : null;
-
-                return {
-                    id: email, email, name: Array.from(data.nameSet!)[0] || 'Unknown',
-                    totalSpent: data.totalSpent || 0, currency: data.currency || 'N/A',
-                    eventsAttended: uniqueEventIds.size,
-                    lastAttendedDate: (lastAttendedEvent && typeof lastAttendedEvent === 'object') ? lastAttendedEvent.starts_at : null,
-                    orders: data.orders || [], attendees: attendees,
-                };
-            });
-
-            updateProgress({ message: 'Performing RFM segmentation...', value: 100 });
-            if (finalAudience.length > 0) {
-                const sortedByRecency = [...finalAudience].sort((a, b) => (new Date(b.lastAttendedDate || 0).getTime()) - (new Date(a.lastAttendedDate || 0).getTime()));
-                const sortedByFrequency = [...finalAudience].sort((a, b) => b.eventsAttended - a.eventsAttended);
-                const sortedByMonetary = [...finalAudience].sort((a, b) => b.totalSpent - a.totalSpent);
-                const quintileSize = Math.max(1, Math.ceil(finalAudience.length / 5));
-                
-                const addScores = (member: AudienceMember, scoreType: 'recencyScore' | 'frequencyScore' | 'monetaryScore', sortedArray: AudienceMember[]) => {
-                    const index = sortedArray.findIndex(m => m.id === member.id);
-                    member[scoreType] = Math.max(1, 5 - Math.floor(index / quintileSize));
-                };
-
-                finalAudience.forEach(member => {
-                    addScores(member, 'recencyScore', sortedByRecency);
-                    addScores(member, 'frequencyScore', sortedByFrequency);
-                    addScores(member, 'monetaryScore', sortedByMonetary);
-                    const R = String(member.recencyScore); const F = String(member.frequencyScore);
-                    if (R >= '4' && F >= '4') member.rfmSegment = 'Champions';
-                    else if (F >= '4') member.rfmSegment = 'Loyal Customers';
-                    else if (R >= '4' && F < '2') member.rfmSegment = 'New Customers';
-                    else if (R >= '3' && F >= '2' && F < '4') member.rfmSegment = 'Potential Loyalists';
-                    else if (R < '3' && F >= '3') member.rfmSegment = 'At Risk';
-                    else if (R < '3' && F < '3') member.rfmSegment = 'Hibernating';
-                    else member.rfmSegment = 'Needs Attention';
-                });
+            // Run analysis (Worker or Main Thread fallback)
+            let finalAudience: AudienceMember[];
+            if (workerApiRef.current) {
+                finalAudience = await workerApiRef.current.analyzeAudience(allOrders, allAttendees, allLedgerEntries);
+            } else {
+                console.log("Running audience analysis on main thread (Worker unavailable).");
+                finalAudience = analyzeAudience(allOrders, allAttendees, allLedgerEntries);
             }
+
+            updateProgress({ message: 'Finalizing...', value: 100 });
 
             await db.setAudienceCache(finalAudience);
             await db.setInKeyval('audience_last_updated', new Date());

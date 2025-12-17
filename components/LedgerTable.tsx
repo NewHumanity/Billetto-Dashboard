@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { LedgerEntry, SortConfig } from '../types';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 interface LedgerTableProps {
   entries: LedgerEntry[];
@@ -20,6 +21,14 @@ const SortIndicator = ({ direction }: { direction?: 'ascending' | 'descending' }
 };
 
 const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortConfig, onSelectOrder }) => {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 70, // Estimated row height (slightly taller due to transaction types)
+    overscan: 10,
+  });
     
   const formatCurrency = (value: number, currencyCode: string) => {
     return new Intl.NumberFormat('en-US', {
@@ -80,10 +89,14 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
     return <p className="text-slate-500 dark:text-slate-400 text-center py-8">No ledger entries found.</p>;
   }
 
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const paddingBottom = virtualItems.length > 0 ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
+
   return (
-    <div className="overflow-x-auto">
+    <div ref={parentRef} className="overflow-y-auto max-h-[70vh] border border-gray-200 dark:border-slate-700 rounded-lg">
       <table className="min-w-full responsive-table">
-        <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0">
+        <thead className="bg-gray-50 dark:bg-slate-900/80 sticky top-0 z-10 shadow-sm">
           <tr>
             <SortableHeader title="Date" sortKey="created_at" />
             <SortableHeader title="Details" sortKey="entry_type" />
@@ -93,7 +106,13 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
           </tr>
         </thead>
         <tbody className="divide-y md:divide-y-0 divide-gray-200 dark:divide-slate-700 bg-white dark:bg-slate-800/50">
-          {entries.map((entry) => {
+          {paddingTop > 0 && (
+            <tr>
+              <td style={{ height: `${paddingTop}px` }} />
+            </tr>
+          )}
+          {virtualItems.map((virtualRow) => {
+            const entry = entries[virtualRow.index];
             const isClickable = !!entry.order_id;
             return (
                 <tr 
@@ -135,6 +154,11 @@ const LedgerTable: React.FC<LedgerTableProps> = ({ entries, requestSort, sortCon
                 </tr>
             )
           })}
+          {paddingBottom > 0 && (
+            <tr>
+              <td style={{ height: `${paddingBottom}px` }} />
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

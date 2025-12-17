@@ -1,3 +1,4 @@
+
 // A simple queue to process promises sequentially.
 class PromiseQueue {
     private queue: (() => Promise<any>)[] = [];
@@ -20,18 +21,27 @@ class PromiseQueue {
             if (now < unpauseTime) {
                 await delay(unpauseTime - now);
             }
+            // Re-check state after await, as other calls might have proceeded or queue might be empty
+            if (this.pendingPromise || this.queue.length === 0) {
+                return;
+            }
             isGloballyPaused = false;
             console.log("Resuming Billetto API requests.");
         }
 
         this.pendingPromise = true;
-        const promiseFn = this.queue.shift()!;
+        const promiseFn = this.queue.shift();
 
-        // Use finally to ensure the next item is dequeued even if the current one fails.
-        promiseFn().finally(() => {
+        if (promiseFn) {
+            // Use finally to ensure the next item is dequeued even if the current one fails.
+            promiseFn().finally(() => {
+                this.pendingPromise = false;
+                this.dequeue();
+            });
+        } else {
+            // Should theoretically not happen due to length check, but safe guard
             this.pendingPromise = false;
-            this.dequeue();
-        });
+        }
     }
 }
 

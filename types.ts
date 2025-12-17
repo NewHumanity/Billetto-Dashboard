@@ -1,11 +1,12 @@
 
+import React from 'react';
 
 export interface ListResponse<T> {
   object: 'list';
   data: T[];
   has_more: boolean;
   total: number;
-  url: string;
+  url?: string | null;
   next_url?: string;
 }
 
@@ -101,8 +102,8 @@ export interface Venue {
 
 export interface Location {
     id: string;
-    full_address: string;
-    name: string;
+    full_address?: string;
+    name?: string;
 }
 
 export interface Organization {
@@ -154,9 +155,9 @@ export interface Plan {
 export interface BillettoEvent {
     id: string;
     object: 'event';
-    name: string;
-    starts_at: string;
-    ends_at?: string;
+    name?: string | null;
+    starts_at?: string | null;
+    ends_at?: string | null;
     state: string;
     currency: string;
     public_url: string;
@@ -165,8 +166,8 @@ export interface BillettoEvent {
     total_capacity?: number | null;
     online_event?: boolean;
     availability?: {
-        available?: number;
-    };
+        available?: number | null;
+    } | null;
     venue?: Venue | string;
     location?: Location | string;
     organization?: Organization | string;
@@ -222,7 +223,7 @@ export interface Attendee {
     fee: number;
     created_at: string;
     event?: BillettoEvent | string;
-    order?: string;
+    order?: string | null;
     booking_question_responses?: ListResponse<BookingQuestionResponse>;
     scannings?: ListResponse<Scanning>;
     ticket_buyer?: TicketBuyer | string;
@@ -247,7 +248,7 @@ export interface OrderLine {
 
 export interface Refund {
     id: string;
-    object: 'refund';
+    object?: 'refund' | 'order_transaction_refund';
     reason: string | null;
     created_at: string;
     amount: number;
@@ -258,21 +259,21 @@ export interface OrderTransaction {
     id: string;
     object: 'order_transaction';
     state: 'successful' | 'failed' | string;
-    payment_method: string | null;
-    payment_gateway_identifier?: string;
+    payment_method?: string | null;
+    payment_gateway_identifier?: string | null;
     payment_gateway_transaction_id?: string;
     payment_gateway_order_id?: string;
     sales_channel?: string;
     revenue_channel?: string;
-    terminal_name?: string;
+    terminal_name?: string | null;
     amount: number;
     refunded_amount?: number;
     balance?: number;
     created_at: string;
     updated_at?: string;
-    successful_at?: string;
-    refunded_at?: string;
-    captured_at?: string;
+    successful_at?: string | null;
+    refunded_at?: string | null;
+    captured_at?: string | null;
     currency: string;
     refunds?: ListResponse<Refund>;
 }
@@ -616,6 +617,6 @@ export type RunTaskInBackgroundSignature = <T>(
 ) => void;
 
 // Fix: Moved from App.tsx to break circular dependencies
-export type View = 'dashboard' | 'performance' | 'orders' | 'ledger' | 'campaigns' | 'targetGroups' | 'attendees' | 'audience';
+export type View = 'dashboard' | 'calendar' | 'performance' | 'orders' | 'ledger' | 'campaigns' | 'targetGroups' | 'attendees' | 'audience' | 'compare';
 export type Theme = 'light' | 'dark' | 'system';
 export type AddToastFn = (message: string, type: Toast['type']) => void;

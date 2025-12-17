@@ -2,6 +2,7 @@
 import { ListResponse } from '../types';
 import { BillettoApiClient, BillettoApiError, BillettoErrorType, NotModifiedError } from '../services/billettoService';
 import { pauseGlobalRequests } from '../services/requestLimiter';
+import { z } from 'zod';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -19,7 +20,8 @@ export const fetchAllPaginatedData = async <T extends { id: string }>(
     maxRetries = 5,
     onProgress?: (progress: number) => void,
     signal?: AbortSignal,
-    onRateLimit?: (message: string) => void
+    onRateLimit?: (message: string) => void,
+    schema?: z.ZodType<T>
 ): Promise<T[]> => {
     const allItems = new Map<string, T>(); // Use a Map to handle duplicates automatically
     const limit = 100; // Enforce max limit for all bulk fetches.
@@ -45,6 +47,23 @@ export const fetchAllPaginatedData = async <T extends { id: string }>(
         try {
             const response = await apiClient.fetchListEndpoint<T>(nextEndpoint, signal);
             
+            // Apply Zod schema validation if provided
+            if (schema) {
+                try {
+                    z.array(schema).parse(response.data);
+                } catch (zodError) {
+                    console.error(`Schema validation failed for endpoint ${initialEndpoint}:`, zodError);
+                    // We re-throw specifically formatted errors so the UI can show them
+                    if (zodError instanceof z.ZodError) {
+                        // Cast to any to access errors array safely if type definition is behaving unexpectedly
+                        const firstError = (zodError as any).errors?.[0];
+                        const errorMessage = firstError ? `${firstError.path.join('.')} - ${firstError.message}` : zodError.message;
+                        throw new Error(`Data Validation Error in ${initialEndpoint}: ${errorMessage}`);
+                    }
+                    throw zodError;
+                }
+            }
+
             if (totalItems === 0) { // On the first successful response, set the total
                 totalItems = response.total;
             }

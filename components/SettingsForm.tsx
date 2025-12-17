@@ -1,8 +1,8 @@
 
-
 import React, { useState } from 'react';
 // Fix: Corrected import path for Theme type
 import { Theme } from '../types';
+import { motion } from 'framer-motion';
 
 interface SettingsFormProps {
   initialApiKey: string;
@@ -17,12 +17,29 @@ const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, initialUsePr
   const [useProxy, setUseProxy] = useState(initialUseProxy);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [isSaving, setIsSaving] = useState(false);
+  const [shouldShake, setShouldShake] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    if (!apiKey.trim()) {
+        setShouldShake(true);
+        setTimeout(() => setShouldShake(false), 500); // Reset shake after animation
+        return;
+    }
+    
     setIsSaving(true);
-    await onSave(apiKey, useProxy, theme);
-    setIsSaving(false);
+    try {
+        await onSave(apiKey, useProxy, theme);
+    } catch (err: any) {
+        console.error("Failed to save settings:", err);
+        setError(err.message || 'Failed to save settings. Please try again.');
+        setShouldShake(true);
+        setTimeout(() => setShouldShake(false), 500);
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   React.useEffect(() => {
@@ -40,7 +57,21 @@ const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, initialUsePr
 
   return (
     <div onClick={handleBackdropClick} className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" aria-modal="true" role="dialog">
-        <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-slate-700 relative">
+        <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ 
+                scale: 1, 
+                opacity: 1,
+                x: shouldShake ? [-10, 10, -10, 10, 0] : 0
+            }}
+            transition={{ 
+                type: "spring", 
+                stiffness: 300, 
+                damping: 25,
+                x: { duration: 0.4 } 
+            }}
+            className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-slate-700 relative"
+        >
             <button
                 onClick={onClose}
                 className="absolute top-4 right-4 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
@@ -51,6 +82,11 @@ const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, initialUsePr
                 </svg>
             </button>
             <h2 id="settings-title" className="text-2xl font-bold text-slate-900 dark:text-white mb-6">Settings</h2>
+            {error && (
+                <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+                    {error}
+                </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-6" aria-labelledby="settings-title">
                 <div>
                     <label htmlFor="apiKey" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -61,7 +97,7 @@ const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, initialUsePr
                         id="apiKey"
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
-                        className="w-full bg-gray-50 dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded-lg p-3 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                        className={`w-full bg-gray-50 dark:bg-slate-900 border ${shouldShake ? 'border-red-500 ring-2 ring-red-500/20' : 'border-gray-300 dark:border-slate-600'} rounded-lg p-3 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-primary transition-colors`}
                         placeholder="YourAPIKey:YourAPISecret"
                         required
                         aria-required="true"
@@ -119,7 +155,7 @@ const SettingsForm: React.FC<SettingsFormProps> = ({ initialApiKey, initialUsePr
                     {isSaving ? 'Clearing Cache...' : 'Save & Fetch Data'}
                 </button>
             </form>
-        </div>
+        </motion.div>
     </div>
   );
 };

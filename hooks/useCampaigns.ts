@@ -1,5 +1,4 @@
 
-
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Campaign, Order, LedgerEntry, ProcessedCampaign } from '../types';
 import { BillettoApiClient, BillettoApiError, BillettoErrorType, NotModifiedError } from '../services/billettoService';
@@ -8,6 +7,7 @@ import { useSortableData } from './useSortableData';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
 // Fix: Import from types.ts to break circular dependency
 import { AddToastFn } from '../types';
+import { CampaignSchema, OrderSchema, LedgerEntrySchema } from '../schemas';
 
 const getCampaignScopeName = (event: Campaign['event']): string => {
     if (!event) return 'Global (Account-wide)';
@@ -106,10 +106,10 @@ export const useCampaigns = (apiClient: BillettoApiClient | null, addToast: AddT
         
         try {
             setAnalysisProgress({ message: 'Fetching all campaigns...', value: 0 });
-            const allCampaignsData = await fetchAllPaginatedData<Campaign>('/campaigns?expand=event', apiClient, 5, undefined, undefined, onRateLimit);
+            const allCampaignsData = await fetchAllPaginatedData<Campaign>('/campaigns', apiClient, 5, undefined, undefined, onRateLimit, CampaignSchema);
             
             setAnalysisProgress({ message: 'Fetching all financial records...', value: 10 });
-            const allLedgerEntries = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries', apiClient, 5, undefined, undefined, onRateLimit);
+            const allLedgerEntries = await fetchAllPaginatedData<LedgerEntry>('/ledger_entries', apiClient, 5, undefined, undefined, onRateLimit, LedgerEntrySchema);
             const ledgerMapByOrder = allLedgerEntries.reduce((map, entry) => {
                 if (entry.order_id) {
                     const orderId = String(entry.order_id);
@@ -142,7 +142,7 @@ export const useCampaigns = (apiClient: BillettoApiClient | null, addToast: AddT
 
                 let campaignOrders: Order[] = [];
                 try {
-                    campaignOrders = await fetchAllPaginatedData<Order>(`/campaigns/${campaign.id}/orders?expand=order_lines`, apiClient, 5, undefined, undefined, onRateLimit);
+                    campaignOrders = await fetchAllPaginatedData<Order>(`/campaigns/${campaign.id}/orders?expand=order_lines`, apiClient, 5, undefined, undefined, onRateLimit, OrderSchema);
                 } catch (e) {
                     if (e instanceof BillettoApiError && e.type === BillettoErrorType.NOT_FOUND) {
                         console.warn(`Campaign ${campaign.id} (${campaign.name}) seems to have no orders endpoint or is invalid. Assuming 0 orders.`);
@@ -231,7 +231,7 @@ export const useCampaigns = (apiClient: BillettoApiClient | null, addToast: AddT
                 return;
             }
 
-            const data = await fetchAllPaginatedData<Campaign>('/campaigns?expand=event', apiClient, 5, undefined, undefined, onRateLimit);
+            const data = await fetchAllPaginatedData<Campaign>('/campaigns', apiClient, 5, undefined, undefined, onRateLimit, CampaignSchema);
             setAllCampaignsForSearch(data.map(processCampaign));
         } catch (e) {
             console.error("Failed to fetch all campaigns for search:", e);

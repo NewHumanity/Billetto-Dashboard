@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { AnalyzedEvent, SortConfig } from '../types';
 
@@ -79,7 +80,7 @@ const PerformanceTable: React.FC<PerformanceTableProps> = ({ analyzedEvents, req
                     <td data-label="#" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">{rank}</td>
                     <td data-label="Event" className="py-4 px-4">
                         <p className="font-semibold text-slate-900 dark:text-white truncate">{event.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(event.starts_at).toLocaleDateString()}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{event.starts_at ? new Date(event.starts_at).toLocaleDateString() : 'N/A'}</p>
                     </td>
                     <td data-label="Tickets Sold" className="whitespace-nowrap py-4 px-4 text-sm font-medium text-slate-900 dark:text-white">{event.ticketCount.toLocaleString()}</td>
                     <td data-label="Gross Revenue" className="whitespace-nowrap py-4 px-4 text-sm text-slate-600 dark:text-slate-300">{formatCurrency(event.grossRevenue, event.currency)}</td>

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { LedgerEntry } from '../types';
 import SimpleDonutChart from './SimpleDonutChart';
@@ -23,21 +22,24 @@ const formatSubtype = (subtype: string) => {
 const FeeBreakdownDetails: React.FC<FeeBreakdownDetailsProps> = ({ feeEntries, currency }) => {
     
     const { breakdown, totalFees } = React.useMemo(() => {
-        // FIX: Explicitly type the accumulator in the reducer to ensure correct type inference.
-        const breakdown = feeEntries.reduce((acc: Record<string, number>, entry) => {
+        // Typed accumulator avoids "Untyped function calls..." error
+        const initialBreakdown: Record<string, number> = {};
+        const breakdown = feeEntries.reduce((acc, entry) => {
             const subtype = entry.entry_subtype || 'uncategorized';
             // Fees are negative, so use Math.abs
-            acc[subtype] = (acc[subtype] || 0) + Math.abs(entry.amount); 
+            const currentAmount = acc[subtype] || 0;
+            acc[subtype] = currentAmount + Math.abs(entry.amount); 
             return acc;
-        }, {});
+        }, initialBreakdown);
         
-        const total = Object.values(breakdown).reduce((sum, val) => sum + val, 0);
+        const values = Object.values(breakdown) as number[];
+        const total = values.reduce((sum: number, val: number) => sum + val, 0);
         
         return { breakdown, totalFees: total };
     }, [feeEntries]);
 
     const chartData = Object.entries(breakdown)
-        .map(([subtype, amount]) => ({ text: formatSubtype(subtype), count: amount }))
+        .map(([subtype, amount]) => ({ text: formatSubtype(subtype), count: amount as number }))
         .sort((a, b) => b.count - a.count);
 
     if (feeEntries.length === 0) {
@@ -72,7 +74,7 @@ const FeeBreakdownDetails: React.FC<FeeBreakdownDetailsProps> = ({ feeEntries, c
                                 <tr key={text}>
                                     <td className="py-2 px-4 text-sm text-slate-600 dark:text-slate-300 capitalize">{text}</td>
                                     <td className="py-2 px-4 text-sm font-medium text-slate-900 dark:text-white text-right">{formatCurrency(count, currency)}</td>
-                                    <td className="py-2 px-4 text-sm text-slate-500 dark:text-slate-400 text-right">{((count / totalFees) * 100).toFixed(1)}%</td>
+                                    <td className="py-2 px-4 text-sm text-slate-500 dark:text-slate-400 text-right">{totalFees > 0 ? ((count / totalFees) * 100).toFixed(1) : '0.0'}%</td>
                                 </tr>
                             ))}
                         </tbody>

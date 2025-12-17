@@ -1,4 +1,3 @@
-
 import React, { useContext } from 'react';
 import RefreshBar from '../RefreshBar';
 import Loader from '../Loader';
@@ -8,6 +7,7 @@ import { AppContext } from '../../contexts/AppContext';
 import { SparklesIcon, ExportIcon } from '../icons';
 import CampaignDetailsView from '../modal_views/CampaignDetailsView';
 import { exportToCsv } from '../../utils/export';
+import { TableSkeleton } from '../Skeleton';
 
 const CampaignsView: React.FC = () => {
     const context = useContext(AppContext);
@@ -32,11 +32,11 @@ const CampaignsView: React.FC = () => {
     };
 
     const renderContent = () => {
-        if (loadingCampaigns && analysisProgress) {
-            return <Loader message={analysisProgress.message} progress={analysisProgress.value} />;
-        }
         if (loadingCampaigns && sortedCampaigns.length === 0) {
-            return <Loader message="Loading campaigns..." />;
+            if (analysisProgress) {
+                return <Loader message={analysisProgress.message} progress={analysisProgress.value} />;
+            }
+            return <TableSkeleton />;
         }
         if (campaignsError) {
             return <ErrorMessage message={campaignsError} />;

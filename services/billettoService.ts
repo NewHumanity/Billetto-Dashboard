@@ -107,6 +107,12 @@ export class BillettoApiClient {
             if (error instanceof NotModifiedError) {
                 throw error;
             }
+            
+            // Allow specific API errors (like 401, 429) to propagate without being wrapped as Network Error
+            if (error instanceof BillettoApiError) {
+                throw error;
+            }
+
             if (error instanceof Error && error.name === 'AbortError') {
                 if (signal?.aborted) {
                     throw error; 
@@ -143,11 +149,20 @@ export class BillettoApiClient {
     let errorDetails: unknown;
 
     try {
-      const errorData = await response.json();
-      errorMessage = errorData?.error?.message || errorData.message || errorData.error || errorMessage;
-      errorDetails = errorData;
+      // Read as text first to handle non-JSON error bodies (like proxy "Internal error")
+      const text = await response.text();
+      try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData?.error?.message || errorData.message || errorData.error || errorMessage;
+          errorDetails = errorData;
+      } catch {
+          // If not JSON, use the raw text if it's a reasonable length
+          if (text && text.length < 500) {
+              errorMessage = text;
+          }
+      }
     } catch {
-      // ignore json parse error
+      // ignore read error
     }
 
     switch (response.status) {
@@ -262,8 +277,12 @@ export class BillettoApiClient {
   }
   
   async getCampaigns(page = 1, limit = 100, expand: string[] = []): Promise<ListResponse<Campaign>> {
-    const expandQuery = expand.length > 0 ? `&expand=${expand.join(',')}` : '';
-    const endpoint = `/campaigns?page=${page}&limit=${limit}${expandQuery}&sort=-created_at`;
+    // FIX: The expand=event parameter causes a 500 error from the Billetto API
+    // on the campaign list endpoint. It is being filtered out here to ensure stability,
+    // while preserving the method signature to avoid breaking changes.
+    const safeExpand = expand.filter(e => e !== 'event');
+    const expandQuery = safeExpand.length > 0 ? `&expand=${safeExpand.join(',')}` : '';
+    const endpoint = `/campaigns?page=${page}&limit=${limit}${expandQuery}`;
     const response = await this.makeRequest(endpoint, REQUEST_TIMEOUT);
     return this.parseListResponse<Campaign>(response);
   }

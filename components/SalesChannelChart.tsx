@@ -1,6 +1,3 @@
-
-
-
 import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { SalesChannelData, Theme } from '../types';
@@ -82,7 +79,7 @@ const SalesChannelChart: React.FC<SalesChannelChartProps> = ({ data, theme }) =>
             <ResponsiveContainer>
                 <PieChart>
                     <Pie
-                        data={currentChartData}
+                        data={currentChartData as any[]}
                         cx="50%"
                         cy="50%"
                         labelLine={false}

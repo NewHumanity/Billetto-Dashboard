@@ -1,13 +1,12 @@
 
-
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Order, BillettoEvent } from '../types';
-import { BillettoApiClient, BillettoApiError, NotModifiedError } from '../services/billettoService';
-import * as db from '../services/dbService';
+import { BillettoApiClient } from '../services/billettoService';
 import { useSortableData } from './useSortableData';
 import { fetchAllPaginatedData } from '../utils/apiHelpers';
-// Fix: Import from types.ts to break circular dependency
 import { AddToastFn } from '../types';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { OrderSchema, BillettoEventSchema } from '../schemas';
 
 const ORDERS_PER_PAGE = 100;
 
@@ -17,43 +16,51 @@ export interface OrderFilters {
 }
 
 export const useOrders = (apiClient: BillettoApiClient | null, addToast: AddToastFn) => {
-    const [allOrders, setAllOrders] = useState<Order[]>([]);
-    const [loadingOrders, setLoadingOrders] = useState<boolean>(true);
-    const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-    const [ordersError, setOrdersError] = useState<string | null>(null);
     const [pagination, setPagination] = useState({ currentPage: 1 });
-    const [lastUpdatedOrders, setLastUpdatedOrders] = useState<Date | null>(null);
     
     const [filters, setFilters] = useState<OrderFilters>({ event: '', q: '' });
-    const [events, setEvents] = useState<BillettoEvent[]>([]);
-    const [loadingEvents, setLoadingEvents] = useState<boolean>(false);
 
     const onRateLimit = useCallback((message: string) => {
         addToast(message, 'info');
     }, [addToast]);
 
-    useEffect(() => {
-        const fetchEventsForFilter = async () => {
-            if (!apiClient) return;
-            setLoadingEvents(true);
-            try {
-                const { events: cachedEvents } = await db.getEventsCache();
-                if (cachedEvents && cachedEvents.length > 0) {
-                    setEvents(cachedEvents);
-                } else {
-                    const allEventsData = await fetchAllPaginatedData<BillettoEvent>('/events?sort=-starts_at', apiClient, 5, undefined, undefined, onRateLimit);
-                    setEvents(allEventsData);
-                    await db.setEventsCache(allEventsData);
-                }
-            } catch (err) {
-                console.error("Failed to fetch events for filter dropdown:", err);
-            } finally {
-                setLoadingEvents(false);
-            }
-        };
-        fetchEventsForFilter();
-    }, [apiClient, onRateLimit]);
-    
+    // 1. Fetch Events for Filter Dropdown
+    const { 
+        data: events = [], 
+        isPending: loadingEvents 
+    } = useQuery({
+        queryKey: ['events'], // Reuse the same key as useEvents for deduplication
+        queryFn: async () => {
+            if (!apiClient) return [];
+            return await fetchAllPaginatedData<BillettoEvent>('/events?sort=-starts_at', apiClient, 5, undefined, undefined, onRateLimit, BillettoEventSchema);
+        },
+        enabled: !!apiClient,
+        staleTime: 1000 * 60 * 5,
+    });
+
+    // 2. Fetch Orders (All Orders)
+    const {
+        data: allOrders = [],
+        isPending: loadingOrders,
+        isFetching: isRefreshingOrders,
+        error: ordersErrorObject,
+        dataUpdatedAt: lastUpdatedOrdersTimestamp,
+        refetch: refreshOrders
+    } = useQuery({
+        queryKey: ['orders', 'all'],
+        queryFn: async () => {
+            if (!apiClient) return [];
+            return await fetchAllPaginatedData<Order>('/orders?expand=event', apiClient, 5, undefined, undefined, onRateLimit, OrderSchema);
+        },
+        enabled: !!apiClient,
+        staleTime: 1000 * 60 * 5,
+        placeholderData: keepPreviousData,
+    });
+
+    const ordersError = ordersErrorObject instanceof Error ? ordersErrorObject.message : null;
+    const lastUpdatedOrders = lastUpdatedOrdersTimestamp ? new Date(lastUpdatedOrdersTimestamp) : null;
+
+    // Client-side filtering
     const filteredOrders = useMemo(() => {
         const lowerCaseQuery = filters.q.toLowerCase();
         return allOrders.filter(order => {
@@ -67,66 +74,13 @@ export const useOrders = (apiClient: BillettoApiClient | null, addToast: AddToas
         });
     }, [allOrders, filters]);
 
-    const { items: sortedOrders, requestSort: requestOrderSort, sortConfig: orderSortConfig } = useSortableData(filteredOrders, { key: 'created_at', direction: 'descending' });
+    const { items: sortedOrders, requestSort: requestOrderSort, sortConfig: orderSortConfig } = useSortableData<Order>(filteredOrders, { key: 'created_at', direction: 'descending' });
 
     const paginatedOrders = useMemo(() => {
         const start = (pagination.currentPage - 1) * ORDERS_PER_PAGE;
         const end = start + ORDERS_PER_PAGE;
         return sortedOrders.slice(start, end);
     }, [sortedOrders, pagination.currentPage]);
-    
-    const fetchAndCacheOrders = useCallback(async (isBackgroundRefresh = false) => {
-        if (!apiClient) return;
-
-        if (isBackgroundRefresh) {
-            setIsRefreshing(true);
-        } else {
-            setLoadingOrders(true);
-        }
-        setOrdersError(null);
-
-        try {
-            const response = await fetchAllPaginatedData<Order>('/orders?expand=event', apiClient, 5, undefined, undefined, onRateLimit);
-            setAllOrders(response);
-            await db.setOrdersCache(response);
-            setLastUpdatedOrders(new Date());
-        } catch (err) {
-            if (err instanceof NotModifiedError) {
-                addToast('Orders are up to date.', 'info');
-                setLastUpdatedOrders(new Date());
-            } else if (err instanceof BillettoApiError) {
-                setOrdersError(err.message);
-            } else if (err instanceof Error && err.name !== 'CancellationError') {
-                setOrdersError('An unknown error occurred while fetching orders.');
-            }
-        } finally {
-            if (isBackgroundRefresh) {
-                setIsRefreshing(false);
-            } else {
-                setLoadingOrders(false);
-            }
-        }
-    }, [apiClient, onRateLimit, addToast]);
-
-    useEffect(() => {
-        const loadOrders = async () => {
-            if (!apiClient) {
-                setLoadingOrders(false);
-                return;
-            };
-            
-            const { orders: cachedOrders, lastUpdated } = await db.getOrdersCache();
-            if (cachedOrders && cachedOrders.length > 0) {
-                setAllOrders(cachedOrders);
-                if (lastUpdated) setLastUpdatedOrders(new Date(lastUpdated));
-                setLoadingOrders(false);
-                fetchAndCacheOrders(true); // stale-while-revalidate
-            } else {
-                fetchAndCacheOrders(false); // initial full load
-            }
-        };
-        loadOrders();
-    }, [apiClient, fetchAndCacheOrders]);
 
     const handleOrderPageChange = (page: number) => {
         setPagination({ currentPage: page });
@@ -139,15 +93,16 @@ export const useOrders = (apiClient: BillettoApiClient | null, addToast: AddToas
         }
     };
     
-    const refreshOrders = () => {
-        fetchAndCacheOrders(false);
-    }
+    // For Global Search Hook consumption
+    const fetchAllOrdersForSearch = useCallback(async () => {
+        return refreshOrders();
+    }, [refreshOrders]);
 
     return {
         orders: paginatedOrders, 
         fullSortedOrders: sortedOrders,
         loadingOrders, 
-        isRefreshingOrders: isRefreshing,
+        isRefreshingOrders,
         ordersError, 
         lastUpdatedOrders,
         refreshOrders, 
@@ -159,8 +114,8 @@ export const useOrders = (apiClient: BillettoApiClient | null, addToast: AddToas
         loadingEvents,
         filters,
         applyFilters,
-        allOrders,
+        allOrders, // Exposed for global search
         loadingAllOrders: loadingOrders,
-        fetchAllOrdersForSearch: () => fetchAndCacheOrders(false),
+        fetchAllOrdersForSearch,
     };
 };

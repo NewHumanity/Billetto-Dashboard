@@ -1,20 +1,10 @@
 
-
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Routes, Route, NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { BillettoApiClient } from './services/billettoService';
 import * as db from './services/dbService';
 import SettingsForm from './components/SettingsForm';
-import { SettingsIcon, CampaignIcon, TargetGroupIcon, UserIcon, LedgerIcon, TicketIcon, CalendarIcon, MenuIcon, SearchIcon, AudienceIcon, TeacherIcon } from './components/icons';
-import DashboardView from './components/views/DashboardView';
-import OrdersView from './components/views/OrdersView';
-import LedgerView from './components/views/LedgerView';
-import CampaignsView from './components/views/CampaignsView';
-import TargetGroupsView from './components/views/TargetGroupsView';
-import AttendeesView from './components/views/AttendeesView';
-import AudienceView from './components/views/AudienceView';
-import PerformanceView from './components/views/PerformanceView';
+import { SettingsIcon, CampaignIcon, TargetGroupIcon, UserIcon, LedgerIcon, TicketIcon, CalendarIcon, MenuIcon, SearchIcon, AudienceIcon, TeacherIcon, CompareIcon, CalendarMonthIcon } from './components/icons';
 import { useEvents } from './hooks/useEvents';
 import { useOrders } from './hooks/useOrders';
 import { useLedger } from './hooks/useLedger';
@@ -25,8 +15,7 @@ import { useAudience } from './hooks/useAudience';
 import { usePerformance } from './hooks/usePerformance';
 import { AppContext, AppContextType } from './contexts/AppContext';
 import GlobalSearch from './components/GlobalSearch';
-// Fix: Import types from types.ts to break circular dependency
-import { ModalView, Toast, BackgroundTask, View, Theme, AddToastFn } from './types';
+import { ModalView, BackgroundTask, View, Theme } from './types';
 import DetailsModal from './components/DetailsModal';
 import OrderDetailsView from './components/modal_views/OrderDetailsView';
 import AttendeeDetailsView from './components/modal_views/AttendeeDetailsView';
@@ -35,57 +24,54 @@ import CustomerDetailsView from './components/modal_views/CustomerDetailsView';
 import { ToastContainer } from './components/Toast';
 import BackgroundTaskDisplay from './components/BackgroundTaskDisplay';
 import { CancellationError } from './utils/apiHelpers';
+import { useUIStore } from './stores/uiStore';
+import { useAuthStore } from './stores/authStore';
+import { queryClient, clearPersistedQueryCache } from './services/queryClient';
+import Loader from './components/Loader';
+
+// Lazy load route components for code splitting
+const DashboardView = React.lazy(() => import('./components/views/DashboardView'));
+const OrdersView = React.lazy(() => import('./components/views/OrdersView'));
+const LedgerView = React.lazy(() => import('./components/views/LedgerView'));
+const CampaignsView = React.lazy(() => import('./components/views/CampaignsView'));
+const TargetGroupsView = React.lazy(() => import('./components/views/TargetGroupsView'));
+const AttendeesView = React.lazy(() => import('./components/views/AttendeesView'));
+const AudienceView = React.lazy(() => import('./components/views/AudienceView'));
+const PerformanceView = React.lazy(() => import('./components/views/PerformanceView'));
+const ComparisonView = React.lazy(() => import('./components/views/ComparisonView'));
+const CalendarView = React.lazy(() => import('./components/views/CalendarView'));
 
 const App: React.FC = () => {
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('billettoApiKey') || '');
-  const [useProxy, setUseProxy] = useState<boolean>(() => {
-    const stored = localStorage.getItem('billettoUseProxy');
-    return stored !== null ? JSON.parse(stored) : true;
-  });
-  const [showSettings, setShowSettings] = useState<boolean>(!apiKey);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
-    const savedState = localStorage.getItem('sidebarOpen');
-    if (savedState !== null) return JSON.parse(savedState);
-    return window.innerWidth > 1024; // Default to open on large screens
-  });
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('billettoTheme') as Theme) || 'system');
-
-  // --- Unified Global Modal State ---
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  const [modalView, setModalView] = useState<ModalView | null>(null);
+  // Auth state from Zustand store
+  const { apiKey, useProxy, setCredentials } = useAuthStore();
   
-  // --- Toast & Background Task State ---
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  
+  // Use Zustand store for UI state
+  const { 
+    theme, setTheme,
+    isSidebarOpen, toggleSidebar,
+    isSearchOpen, setSearchOpen,
+    isMoreMenuOpen, setMoreMenuOpen,
+    modalView, openModal, closeModal,
+    toasts, addToast, removeToast
+  } = useUIStore();
+
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
   const [taskControllers, setTaskControllers] = useState(new Map<string, AbortController>());
-
 
   const apiClient = useMemo(() => apiKey ? new BillettoApiClient(apiKey, useProxy) : null, [apiKey, useProxy]);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- Toast & Background Task Management ---
-  const addToast: AddToastFn = useCallback((message: string, type: Toast['type']) => {
-    setToasts(prevToasts => {
-        const existingToast = prevToasts.find(t => t.message === message && t.type === type);
-        
-        if (existingToast) {
-            return prevToasts.map(t =>
-                t.id === existingToast.id
-                    ? { ...t, count: (t.count || 1) + 1, id: Date.now() }
-                    : t
-            );
-        }
-        
-        return [...prevToasts, { id: Date.now(), message, type, count: 1 }];
-    });
-  }, []);
+  // Show settings if no API key is present on mount
+  useEffect(() => {
+    if (!apiKey) {
+      setShowSettings(true);
+    }
+  }, [apiKey]);
 
-  const removeToast = (id: number) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  };
-  
+  // Background Task Management
   const cancelTask = useCallback((taskId: string) => {
       const controller = taskControllers.get(taskId);
       if (controller) {
@@ -174,21 +160,17 @@ const App: React.FC = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
-        setIsSearchOpen(true);
+        setSearchOpen(true);
       }
       if (event.key === 'Escape') {
-        setIsSearchOpen(false);
-        setModalView(null);
-        setIsMoreMenuOpen(false);
+        setSearchOpen(false);
+        closeModal();
+        setMoreMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('sidebarOpen', JSON.stringify(isSidebarOpen));
-  }, [isSidebarOpen]);
+  }, [setSearchOpen, closeModal, setMoreMenuOpen]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -197,7 +179,7 @@ const App: React.FC = () => {
       (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
     root.classList.toggle('dark', isDark);
-    localStorage.setItem('billettoTheme', theme);
+    localStorage.setItem('billettoTheme', theme); // Keep this for index.html FOUC script
   }, [theme]);
 
   useEffect(() => {
@@ -209,13 +191,13 @@ const App: React.FC = () => {
     };
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [theme]);
-
-  const toggleSidebar = () => setIsSidebarOpen(prev => !prev);
+  }, [theme, setTheme]);
   
   const viewToPathMap: Record<View, string> = {
       dashboard: '/',
+      calendar: '/calendar',
       performance: '/performance',
+      compare: '/compare',
       orders: '/orders',
       ledger: '/ledger',
       campaigns: '/campaigns',
@@ -232,36 +214,32 @@ const App: React.FC = () => {
             const eventItem = eventsHook.filteredEventListItems.find(item => item.id === itemId);
             if (eventItem) eventsHook.setSelectedItem(eventItem);
         } else if (view === 'orders') {
-            setModalView({ title: `Order ${itemId}`, content: (props) => <OrderDetailsView {...props} orderId={itemId} /> });
+            openModal({ title: `Order ${itemId}`, content: (props) => <OrderDetailsView {...props} orderId={itemId} /> });
         } else if (view === 'attendees') {
-            setModalView({ title: `Attendee ${itemId}`, content: (props) => <AttendeeDetailsView {...props} attendeeId={itemId} /> });
+            openModal({ title: `Attendee ${itemId}`, content: (props) => <AttendeeDetailsView {...props} attendeeId={itemId} /> });
         } else if (view === 'campaigns') {
-            setModalView({ title: `Campaign ${itemId}`, content: (props) => <CampaignDetailsView {...props} campaignId={itemId} /> });
+            openModal({ title: `Campaign ${itemId}`, content: (props) => <CampaignDetailsView {...props} campaignId={itemId} /> });
         } else if (view === 'audience') {
-            setModalView({ title: `Customer ${itemId}`, content: (props) => <CustomerDetailsView {...props} customerId={itemId} /> });
+            openModal({ title: `Customer ${itemId}`, content: (props) => <CustomerDetailsView {...props} customerId={itemId} /> });
         } else if (view === 'targetGroups' && targetGroupsHook.sortedTargetGroups.find(tg => tg.id === itemId)) {
             targetGroupsHook.setSelectedTargetGroupId(itemId);
         }
     }
-    setIsSearchOpen(false);
-  }, [navigate, eventsHook, targetGroupsHook, setModalView]);
+    setSearchOpen(false);
+  }, [navigate, eventsHook, targetGroupsHook, openModal, setSearchOpen]);
 
   const handleSaveSettings = async (newApiKey: string, newUseProxy: boolean, newTheme: Theme) => {
-    localStorage.setItem('billettoApiKey', newApiKey);
-    localStorage.setItem('billettoUseProxy', JSON.stringify(newUseProxy));
     setTheme(newTheme);
     setShowSettings(false);
     await db.clearAllCache();
+    queryClient.clear(); // Clear in-memory cache
+    await clearPersistedQueryCache(); // Clear IDB persisted cache
     if (location.pathname !== '/') {
         navigate('/');
     }
-    setApiKey(newApiKey);
-    setUseProxy(newUseProxy);
+    setCredentials(newApiKey, newUseProxy);
   };
 
-  // FIX: Refactored NavItem to handle onClick events for button-like actions,
-  // rendering a <button> for semantics and accessibility, while still supporting
-  // <NavLink> for actual navigation. This resolves the TypeScript errors.
   const NavItem = ({ to, label, icon, end = false, onClick }: { to: string; label: string; icon: React.ReactNode; end?: boolean; onClick?: () => void }) => {
     const content = (
       <>
@@ -323,7 +301,8 @@ const App: React.FC = () => {
     ...attendeesHook,
     ...audienceHook,
     ...performanceHook,
-    setModalView,
+    // Bridge Zustand store to Context
+    setModalView: (view) => view ? openModal(view) : closeModal(),
     navigateTo,
     toasts,
     addToast,
@@ -335,7 +314,7 @@ const App: React.FC = () => {
   
   const handleMoreNav = (path: string) => {
     navigate(path);
-    setIsMoreMenuOpen(false);
+    setMoreMenuOpen(false);
   };
   
   const MoreMenuNavItem = ({ onClick, label, icon }: { onClick: () => void; label: string; icon: React.ReactNode }) => (
@@ -353,10 +332,12 @@ const App: React.FC = () => {
 
   const desktopNavigation = (
     <>
-      <NavItem to="/" end label="Dashboard" icon={<CalendarIcon />} />
+      <NavItem to="/" end label="Dashboard" icon={<TicketIcon />} />
+      <NavItem to="/calendar" label="Calendar" icon={<CalendarMonthIcon />} />
+      <NavItem to="/compare" label="Compare" icon={<CompareIcon />} />
       <NavItem to="/performance" label="Performance" icon={<TeacherIcon />} />
       <NavItem to="/audience" label="Audience" icon={<AudienceIcon />} />
-      <NavItem to="/orders" label="Orders" icon={<TicketIcon />} />
+      <NavItem to="/orders" label="Orders" icon={<CalendarIcon />} />
       <NavItem to="/ledger" label="Ledger" icon={<LedgerIcon />} />
       <NavItem to="/campaigns" label="Campaigns" icon={<CampaignIcon />} />
       <NavItem to="/target-groups" label="Target Groups" icon={<TargetGroupIcon />} />
@@ -366,139 +347,145 @@ const App: React.FC = () => {
   
   const mobileNavigation = (
      <>
-        <NavItem to="/" end label="Dashboard" icon={<CalendarIcon />} />
-        <NavItem to="/audience" label="Audience" icon={<AudienceIcon />} />
-        <NavItem to="/orders" label="Orders" icon={<TicketIcon />} />
-        <NavItem to="#" onClick={() => setIsSearchOpen(true)} label="Search" icon={<SearchIcon />} />
-        <NavItem to="#" onClick={() => setIsMoreMenuOpen(true)} label="More" icon={<MenuIcon />} />
+        <NavItem to="/" end label="Dashboard" icon={<TicketIcon />} />
+        <NavItem to="/calendar" label="Calendar" icon={<CalendarMonthIcon />} />
+        <NavItem to="/orders" label="Orders" icon={<CalendarIcon />} />
+        <NavItem to="#" onClick={() => setSearchOpen(true)} label="Search" icon={<SearchIcon />} />
+        <NavItem to="#" onClick={() => setMoreMenuOpen(true)} label="More" icon={<MenuIcon />} />
     </>
   );
 
 
   return (
-    <AppContext.Provider value={appContextValue}>
-      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans">
-        <ToastContainer toasts={toasts} onRemove={removeToast} />
-        {showSettings && <SettingsForm initialApiKey={apiKey} initialUseProxy={useProxy} initialTheme={theme} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />}
-        {isSearchOpen && <GlobalSearch onClose={() => setIsSearchOpen(false)} />}
-        
-        <BackgroundTaskDisplay tasks={backgroundTasks} onCancel={cancelTask} onClear={clearTask} />
+      <AppContext.Provider value={appContextValue}>
+        <div className="min-h-screen bg-gray-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans">
+          <ToastContainer toasts={toasts} onRemove={removeToast} />
+          {showSettings && <SettingsForm initialApiKey={apiKey} initialUseProxy={useProxy} initialTheme={theme} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />}
+          {isSearchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
+          
+          <BackgroundTaskDisplay tasks={backgroundTasks} onCancel={cancelTask} onClear={clearTask} />
 
-        {isMoreMenuOpen && (
-            <div onClick={() => setIsMoreMenuOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden flex items-end animate-fade-in">
-                <div
-                    onClick={e => e.stopPropagation()}
-                    className="w-full bg-white dark:bg-slate-800 rounded-t-2xl p-4 animate-slide-up border-t border-gray-200 dark:border-slate-700"
-                >
-                    <div className="w-12 h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full mx-auto mb-4"></div>
-                    <nav className="grid grid-cols-4 gap-2">
-                         <MoreMenuNavItem onClick={() => handleMoreNav('/performance')} label="Performance" icon={<TeacherIcon />} />
-                         <MoreMenuNavItem onClick={() => handleMoreNav('/ledger')} label="Ledger" icon={<LedgerIcon />} />
-                         <MoreMenuNavItem onClick={() => handleMoreNav('/campaigns')} label="Campaigns" icon={<CampaignIcon />} />
-                         <MoreMenuNavItem onClick={() => handleMoreNav('/target-groups')} label="Groups" icon={<TargetGroupIcon />} />
-                         <MoreMenuNavItem onClick={() => handleMoreNav('/attendees')} label="Attendees" icon={<UserIcon />} />
-                         <MoreMenuNavItem onClick={() => { setShowSettings(true); setIsMoreMenuOpen(false); }} label="Settings" icon={<SettingsIcon />} />
-                    </nav>
-                </div>
-            </div>
-        )}
-
-        {/* --- Unified Global Modal --- */}
-        {modalView && (
-          <DetailsModal
-            initialView={modalView}
-            onClose={() => setModalView(null)}
-          />
-        )}
-        
-        <div className="flex">
-          <aside className={`hidden md:flex flex-col bg-white dark:bg-slate-800 p-4 min-h-screen fixed transition-all duration-300 ease-in-out z-20 ${isSidebarOpen ? 'w-60' : 'w-20'}`}>
-            <div className="h-8 mb-8 flex items-center justify-center relative">
-              <Link to="/" className={`text-slate-900 dark:text-white text-2xl font-bold whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!isSidebarOpen}>
-                Billetto<span className="text-brand-primary">Stats</span>
-              </Link>
-              <Link to="/" className={`absolute transition-opacity duration-200 ${isSidebarOpen ? 'opacity-0' : 'opacity-100'}`} aria-hidden={isSidebarOpen}>
-                <TicketIcon />
-              </Link>
-            </div>
-            <nav className="flex flex-col gap-2">{desktopNavigation}</nav>
-            <div className="mt-auto"><NavItem to="#" onClick={() => setShowSettings(true)} label="Settings" icon={<SettingsIcon />} /></div>
-          </aside>
-
-          <main className={`flex-1 flex flex-col p-4 sm:p-6 lg:p-8 pb-24 md:pb-8 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'md:ml-60' : 'md:ml-20'}`}>
-            {apiKey && (
-              <>
-                {/* Desktop Header */}
-                <header className="hidden md:flex items-center mb-6 flex-shrink-0">
-                  <button 
-                    onClick={toggleSidebar} 
-                    className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                    aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+          {isMoreMenuOpen && (
+              <div onClick={() => setMoreMenuOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden flex items-end animate-fade-in">
+                  <div
+                      onClick={e => e.stopPropagation()}
+                      className="w-full bg-white dark:bg-slate-800 rounded-t-2xl p-4 animate-slide-up border-t border-gray-200 dark:border-slate-700"
                   >
-                    <MenuIcon />
-                  </button>
-                  <h1 className="text-xl font-semibold text-slate-900 dark:text-white ml-4 capitalize">
-                    {headerTitle}
-                  </h1>
-                  <div className="ml-auto">
-                      <button 
-                          onClick={() => setIsSearchOpen(true)}
-                          className="flex items-center gap-2 px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                          aria-label="Open search (Cmd+K)"
-                      >
-                          <SearchIcon />
-                          <span className="hidden lg:inline">Search...</span>
-                          <kbd className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-sans font-semibold text-slate-500 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded">
-                              ⌘K
-                          </kbd>
-                      </button>
+                      <div className="w-12 h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full mx-auto mb-4"></div>
+                      <nav className="grid grid-cols-4 gap-2">
+                          <MoreMenuNavItem onClick={() => handleMoreNav('/compare')} label="Compare" icon={<CompareIcon />} />
+                          <MoreMenuNavItem onClick={() => handleMoreNav('/performance')} label="Performance" icon={<TeacherIcon />} />
+                          <MoreMenuNavItem onClick={() => handleMoreNav('/audience')} label="Audience" icon={<AudienceIcon />} />
+                          <MoreMenuNavItem onClick={() => handleMoreNav('/ledger')} label="Ledger" icon={<LedgerIcon />} />
+                          <MoreMenuNavItem onClick={() => handleMoreNav('/campaigns')} label="Campaigns" icon={<CampaignIcon />} />
+                          <MoreMenuNavItem onClick={() => handleMoreNav('/target-groups')} label="Groups" icon={<TargetGroupIcon />} />
+                          <MoreMenuNavItem onClick={() => handleMoreNav('/attendees')} label="Attendees" icon={<UserIcon />} />
+                          <MoreMenuNavItem onClick={() => { setShowSettings(true); setMoreMenuOpen(false); }} label="Settings" icon={<SettingsIcon />} />
+                      </nav>
                   </div>
-                </header>
-                {/* Mobile Header */}
-                 <header className="md:hidden flex items-center mb-6 flex-shrink-0">
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white capitalize">
-                        {headerTitle}
-                    </h1>
-                </header>
-              </>
-            )}
-            <div className="flex-grow">
-              {apiKey ? (
-                  <Routes>
-                    <Route path="/" element={<DashboardView />} />
-                    <Route path="/performance" element={<PerformanceView />} />
-                    <Route path="/orders" element={<OrdersView />} />
-                    <Route path="/ledger" element={<LedgerView />} />
-                    <Route path="/campaigns" element={<CampaignsView />} />
-                    <Route path="/target-groups" element={<TargetGroupsView />} />
-                    <Route path="/attendees" element={<AttendeesView />} />
-                    <Route path="/audience" element={<AudienceView />} />
-                </Routes>
-              ) : (
-                <div className="flex items-center justify-center h-[calc(100vh-10rem)] rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-dashed border-gray-300 dark:border-slate-700 p-8">
-                  <div className="text-center">
-                    <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Welcome to BillettoStats</h2>
-                    <p className="mt-2 text-slate-500 dark:text-slate-400">Please open settings and enter your API Keypair to get started.</p>
-                    <button 
-                      onClick={() => setShowSettings(true)}
-                      className="mt-6 bg-brand-primary hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                    >
-                      Open Settings
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </main>
-        </div>
+              </div>
+          )}
 
-        {apiKey && (
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg border-t border-gray-200 dark:border-slate-700 p-1 flex justify-around items-center z-30">
-            {mobileNavigation}
-          </nav>
-        )}
-      </div>
-    </AppContext.Provider>
+          {/* --- Unified Global Modal --- */}
+          {modalView && (
+            <DetailsModal
+              initialView={modalView}
+              onClose={closeModal}
+            />
+          )}
+          
+          <div className="flex">
+            <aside className={`hidden md:flex flex-col bg-white dark:bg-slate-800 p-4 min-h-screen fixed transition-all duration-300 ease-in-out z-20 ${isSidebarOpen ? 'w-60' : 'w-20'}`}>
+              <div className="h-8 mb-8 flex items-center justify-center relative">
+                <Link to="/" className={`text-slate-900 dark:text-white text-2xl font-bold whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!isSidebarOpen}>
+                  Billetto<span className="text-brand-primary">Stats</span>
+                </Link>
+                <Link to="/" className={`absolute transition-opacity duration-200 ${isSidebarOpen ? 'opacity-0' : 'opacity-100'}`} aria-hidden={isSidebarOpen}>
+                  <TicketIcon />
+                </Link>
+              </div>
+              <nav className="flex flex-col gap-2">{desktopNavigation}</nav>
+              <div className="mt-auto"><NavItem to="#" onClick={() => setShowSettings(true)} label="Settings" icon={<SettingsIcon />} /></div>
+            </aside>
+
+            <main className={`flex-1 flex flex-col p-4 sm:p-6 lg:p-8 pb-24 md:pb-8 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'md:ml-60' : 'md:ml-20'}`}>
+              {apiKey && (
+                <>
+                  {/* Desktop Header */}
+                  <header className="hidden md:flex items-center mb-6 flex-shrink-0">
+                    <button 
+                      onClick={toggleSidebar} 
+                      className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                      aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                    >
+                      <MenuIcon />
+                    </button>
+                    <h1 className="text-xl font-semibold text-slate-900 dark:text-white ml-4 capitalize">
+                      {headerTitle}
+                    </h1>
+                    <div className="ml-auto">
+                        <button 
+                            onClick={() => setSearchOpen(true)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+                            aria-label="Open search (Cmd+K)"
+                        >
+                            <SearchIcon />
+                            <span className="hidden lg:inline">Search...</span>
+                            <kbd className="hidden lg:inline-flex items-center px-2 py-1 text-xs font-sans font-semibold text-slate-500 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded">
+                                ⌘K
+                            </kbd>
+                        </button>
+                    </div>
+                  </header>
+                  {/* Mobile Header */}
+                  <header className="md:hidden flex items-center mb-6 flex-shrink-0">
+                      <h1 className="text-2xl font-bold text-slate-900 dark:text-white capitalize">
+                          {headerTitle}
+                      </h1>
+                  </header>
+                </>
+              )}
+              <div className="flex-grow">
+                {apiKey ? (
+                  <React.Suspense fallback={<div className="flex h-[calc(100vh-10rem)] items-center justify-center"><Loader /></div>}>
+                    <Routes>
+                      <Route path="/" element={<DashboardView />} />
+                      <Route path="/performance" element={<PerformanceView />} />
+                      <Route path="/compare" element={<ComparisonView />} />
+                      <Route path="/calendar" element={<CalendarView />} />
+                      <Route path="/orders" element={<OrdersView />} />
+                      <Route path="/ledger" element={<LedgerView />} />
+                      <Route path="/campaigns" element={<CampaignsView />} />
+                      <Route path="/target-groups" element={<TargetGroupsView />} />
+                      <Route path="/attendees" element={<AttendeesView />} />
+                      <Route path="/audience" element={<AudienceView />} />
+                    </Routes>
+                  </React.Suspense>
+                ) : (
+                  <div className="flex items-center justify-center h-[calc(100vh-10rem)] rounded-xl bg-white/50 dark:bg-slate-800/50 border-2 border-dashed border-gray-300 dark:border-slate-700 p-8">
+                    <div className="text-center">
+                      <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Welcome to BillettoStats</h2>
+                      <p className="mt-2 text-slate-500 dark:text-slate-400">Please open settings and enter your API Keypair to get started.</p>
+                      <button 
+                        onClick={() => setShowSettings(true)}
+                        className="mt-6 bg-brand-primary hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                      >
+                        Open Settings
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </main>
+          </div>
+
+          {apiKey && (
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg border-t border-gray-200 dark:border-slate-700 p-1 flex justify-around items-center z-30">
+              {mobileNavigation}
+            </nav>
+          )}
+        </div>
+      </AppContext.Provider>
   );
 };
 

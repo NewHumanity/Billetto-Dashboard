@@ -1,3 +1,4 @@
+
 import { useMemo, useContext } from 'react';
 import { AppContext } from '../contexts/AppContext';
 import { EventListItemType, Order, Attendee, Campaign, TargetGroup } from '../types';
@@ -52,13 +53,13 @@ export const useSearch = (query: string) => {
 
         // 1. Search Events (uses already loaded list)
         const eventResults = filteredEventListItems
-            .filter(event => event.name.toLowerCase().includes(lowerCaseQuery))
+            .filter(event => (event.name || '').toLowerCase().includes(lowerCaseQuery))
             .slice(0, 5)
             .map((event): SearchResultItem => ({
                 id: event.id,
                 type: 'Event',
-                title: event.name,
-                subtitle: new Date(event.starts_at).toLocaleDateString(),
+                title: event.name || 'Untitled Event',
+                subtitle: event.starts_at ? new Date(event.starts_at).toLocaleDateString() : 'N/A',
                 object: event
             }));
         if (eventResults.length > 0) {
@@ -102,7 +103,7 @@ export const useSearch = (query: string) => {
                     id: attendee.id,
                     type: 'Attendee',
                     title: attendee.name,
-                    subtitle: `Attendee at ${typeof attendee.event === 'object' ? attendee.event.name : ''}`,
+                    subtitle: `Attendee at ${typeof attendee.event === 'object' ? (attendee.event.name || 'Untitled') : ''}`,
                     object: attendee
                 }));
         } else {
